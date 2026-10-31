@@ -4,12 +4,12 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <meta name="theme-color" content="#121212" />
-<meta name="description" content="Spotify Bilingual Lyrics V6 - tối ưu lời và menu ẩn" />
+<meta name="description" content="Spotify Bilingual Lyrics V7 - giao diện gọn hơn, lời bám đáy" />
 <link rel="manifest" href="./manifest.json" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<title>Spotify Bilingual Lyrics V6</title>
+<title>Spotify Bilingual Lyrics V7</title>
 <style>
 :root{--bg:#121212;--surface:#181818;--surface2:#242424;--border:#333;--green:#1ed760;--green2:#1db954;--text:#fff;--muted:#b3b3b3;--trans:#b8f5ca;--danger:#ff6b6b}
 *{box-sizing:border-box}html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
@@ -28,7 +28,7 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;pa
 .utility-drawer .navtabs,.utility-drawer .toolbar{width:100%}
 .utility-hint{font-size:.78rem;color:var(--muted);margin-top:8px;line-height:1.45}
 
-@media(max-width:640px){header{align-items:flex-start}.brand{font-size:.95rem}.actions .btn{padding:7px 10px;font-size:.78rem}.track-card{grid-template-columns:50px 1fr}.cover{width:50px;height:50px}.status{grid-column:1/-1;text-align:left}.original{font-size:1.08rem}.line.active .original{font-size:1.16rem}.toolbar{gap:6px}.toolbar .btn{font-size:.78rem}.lyrics{padding-bottom:110px}.app{padding:10px 12px 14px;gap:8px}#panel-now.panel.active{flex:1;min-height:58vh}.track-card{padding:10px 12px}}
+@media(max-width:640px){header{align-items:center;padding:8px 12px 8px;padding-top:max(8px,env(safe-area-inset-top));gap:8px}.brand{font-size:.84rem;gap:6px;max-width:42vw;overflow:hidden;text-overflow:ellipsis}.actions{gap:6px;flex-wrap:nowrap;align-items:center}.actions .btn{padding:7px 10px;font-size:.76rem}.menu-btn{width:42px;min-width:42px;padding:0}.track-card{display:none}.cover{width:50px;height:50px}.status{grid-column:1/-1;text-align:left}.original{font-size:1.08rem}.line.active .original{font-size:1.16rem}.toolbar{gap:6px}.toolbar .btn{font-size:.78rem}.lyrics{padding-bottom:110px}.app{padding:8px 12px 14px;gap:8px}#panel-now.panel.active{flex:1;min-height:62vh}.player-shell{margin-top:0}#loginBtn{max-width:132px;white-space:normal;line-height:1.05;text-align:center}.track-card{padding:10px 12px}}
 
 /* v3 library/search/collection */
 .navtabs{width:min(760px,100%);display:flex;gap:6px;overflow-x:auto;padding:2px 0}.tabbtn{white-space:nowrap;border:1px solid var(--border);background:var(--surface);color:var(--muted);padding:8px 12px;border-radius:999px;cursor:pointer}.tabbtn.active{background:var(--green);color:#000;border-color:var(--green);font-weight:800}.panel{width:min(760px,100%);flex:1;min-height:0;overflow:auto;padding:4px 0 110px;display:none}.panel.active{display:block}.searchbar{display:flex;gap:8px;position:sticky;top:0;background:var(--bg);z-index:4;padding:6px 0 12px}.searchbar input{flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:999px;padding:11px 15px}.list{display:flex;flex-direction:column;gap:8px}.item{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:11px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:9px}.item-cover{width:56px;height:56px;object-fit:cover;border-radius:7px;background:#2b2b2b}.item-title{font-weight:750;line-height:1.3}.item-sub{font-size:.82rem;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.item-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.item-actions .tiny{padding:5px 9px}.section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 12px}.section-head h3{margin:0}.playlist-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}.playlist-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;cursor:pointer}.playlist-card:hover{border-color:var(--green)}.playlist-name{font-weight:800}.playlist-meta{font-size:.8rem;color:var(--muted);margin-top:5px}.inline-create{display:flex;gap:8px;margin:10px 0 14px}.inline-create input{flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:9px 11px}.backrow{display:flex;gap:8px;align-items:center;margin-bottom:10px}.empty-small{color:var(--muted);text-align:center;padding:40px 15px;line-height:1.6}.badge{font-size:.7rem;border:1px solid var(--border);color:var(--muted);padding:2px 6px;border-radius:999px}.playlist-picker-list{max-height:50vh;overflow:auto;display:flex;flex-direction:column;gap:7px;margin-top:10px}.pick-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border);border-radius:10px;padding:9px 10px}.pick-row:hover{border-color:var(--green)}
@@ -240,7 +240,7 @@ async function ensureToken(){
   const res=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body}); const data=await res.json(); if(!res.ok) throw new Error('Không thể làm mới Spotify token'); saveTokens(data); return accessToken;
 }
 function logoutSpotify(){ if(webPlayer){try{webPlayer.disconnect()}catch(_){ }webPlayer=null;webDeviceId='';setPlayerReadyUI(false);} playlistsCache=[]; [LS.access,LS.refresh,LS.expires,LS.verifier,LS.state].forEach(k=>localStorage.removeItem(k)); accessToken='';refreshToken='';expiresAt=0;lastTrackId='';clearInterval(pollTimer);pollTimer=null;updateLoginUI(); $('trackTitle').textContent='Đã ngắt kết nối Spotify';$('trackArtist').textContent='';$('syncStatus').textContent='[Chưa kết nối]'; }
-function updateLoginUI(){ const b=$('loginBtn'); if(accessToken||refreshToken){b.textContent='🟢 Spotify đã kết nối';b.title='Bấm để ngắt kết nối';}else{b.textContent='🔗 Kết nối Spotify';b.title='';} }
+function updateLoginUI(){ const b=$('loginBtn'); const compact=window.innerWidth<=640; if(accessToken||refreshToken){b.textContent=compact?'🟢 Đã kết nối':'🟢 Spotify đã kết nối';b.title='Bấm để ngắt kết nối';}else{b.textContent=compact?'🔗 Kết nối':'🔗 Kết nối Spotify';b.title='';} }
 
 async function fetchCurrentlyPlaying(force=false){
   try{
@@ -274,7 +274,7 @@ function parseLrc(text){ const arr=[];const re=/\[(\d{1,3}):(\d{2})(?:\.(\d{1,3}
 function parsePlain(text){ lyrics=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).map((s,i)=>({time:i*5,text:s,translation:''}));renderLyrics(false); }
 function renderLyrics(synced=true){ const box=$('lyrics');box.innerHTML=''; lyrics.forEach((line,i)=>{const div=document.createElement('div');div.className='line';div.id='line-'+i;div.dataset.i=i;const words=line.text.split(/(\s+)/).map(part=>/^\s+$/.test(part)?part:`<span class="word" data-word="${esc(part.replace(/^\W+|\W+$/g,''))}">${esc(part)}</span>`).join('');div.innerHTML=`<div class="original">${words}</div><div class="translation" id="tr-${i}" style="${line.translation?'':'display:none'}">${esc(line.translation)}</div><div class="line-tools"><button class="tiny" data-translate="${i}">🌐 Dịch câu</button></div>`;box.appendChild(div);}); if(lyrics.length){$('translateAllBtn').disabled=false;$('clearTransBtn').disabled=false;} renderFullLyrics(); }
 function handleLyricsClick(e){ const w=e.target.closest('.word');if(w&&w.dataset.word){lookupWord(w.dataset.word);return;}const b=e.target.closest('[data-translate]');if(b)translateOne(Number(b.dataset.translate)); }
-function syncLyrics(sec){ if(!lyrics.length)return;let idx=-1;for(let i=0;i<lyrics.length;i++){if(sec>=lyrics[i].time)idx=i;else break;}if(idx===activeIndex||idx<0)return; if(activeIndex>=0)$('line-'+activeIndex)?.classList.remove('active');activeIndex=idx;const el=$('line-'+idx);if(el){el.classList.add('active');if(!fullLyricsOpen){const box=$('panel-now'); const target=Math.max(0,el.offsetTop-(box.clientHeight*0.25)); box.scrollTo({top:target,behavior:'smooth'});}} syncFullLyricsIndex(idx); }
+function syncLyrics(sec){ if(!lyrics.length)return;let idx=-1;for(let i=0;i<lyrics.length;i++){if(sec>=lyrics[i].time)idx=i;else break;}if(idx===activeIndex||idx<0)return; if(activeIndex>=0)$('line-'+activeIndex)?.classList.remove('active');activeIndex=idx;const el=$('line-'+idx);if(el){el.classList.add('active');if(!fullLyricsOpen){const box=$('panel-now'); const target=Math.max(0,el.offsetTop-(box.clientHeight*0.72)); box.scrollTo({top:target,behavior:'smooth'});}} syncFullLyricsIndex(idx); }
 
 async function googleTranslate(q,target){
   if(!googleApiKey){openSettings();throw new Error('Chưa có Google Translate API Key');}
@@ -309,7 +309,7 @@ function renderFullLyrics(){
   });
 }
 function updateFullLyricsMeta(){const m=currentSongMeta();$('fullLyricsSong').textContent=m.title;$('fullLyricsArtist').textContent=m.artist;}
-function focusFullLine(el,behavior='smooth'){const box=$('fullLyricsScroll');if(!box||!el)return;const target=Math.max(0,el.offsetTop-(box.clientHeight*0.34));box.scrollTo({top:target,behavior});}
+function focusFullLine(el,behavior='smooth'){const box=$('fullLyricsScroll');if(!box||!el)return;const target=Math.max(0,el.offsetTop-(box.clientHeight*0.46));box.scrollTo({top:target,behavior});}
 function openFullLyrics(){fullLyricsOpen=true;updateFullLyricsMeta();renderFullLyrics();$('lyricsScreen').classList.add('open');$('lyricsScreen').setAttribute('aria-hidden','false');document.body.classList.add('lyrics-mode');setTimeout(()=>{const el=$('full-line-'+activeIndex);if(el)focusFullLine(el,'auto');},80);}
 function closeFullLyrics(){fullLyricsOpen=false;$('lyricsScreen').classList.remove('open');$('lyricsScreen').setAttribute('aria-hidden','true');document.body.classList.remove('lyrics-mode');}
 function syncFullLyricsIndex(idx){
