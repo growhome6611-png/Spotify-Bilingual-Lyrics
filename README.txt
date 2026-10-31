@@ -12,3 +12,6 @@ YEU CAU:
 3. Sau khi cap nhat V5, ngat ket noi Spotify va ket noi lai de cap them scope streaming + user-modify-playback-state.
 4. Web Playback SDK yeu cau tai khoan Spotify Premium.
 5. Tren iPhone, sau khi chuyen thiet bi phat co the can cham nut Play mot lan.
+
+
+V8: thêm thanh điều hướng đáy kiểu Spotify và Google Drive Sync cho bản dịch. Cần tạo Google OAuth Client ID loại Web application, thêm domain Vercel vào Authorized JavaScript origins, bật Google Drive API, và dùng scope drive.file.
