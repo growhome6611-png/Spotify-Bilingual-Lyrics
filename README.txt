@@ -13,3 +13,6 @@ LUU Y:
 - Neu test local, dung loopback server va dang ky Redirect URI tuong ung.
 - Nen gioi han Google API key theo HTTP referrer/domain Vercel cua ban.
 - PWA chi cache giao dien. Spotify, lyric va dich van can Internet.
+
+
+V3: thêm Tìm kiếm, Thư viện Spotify, Playlist/Bộ sưu tập. Sau khi deploy bản V3, ngắt kết nối rồi kết nối Spotify lại để cấp các scope mới.
