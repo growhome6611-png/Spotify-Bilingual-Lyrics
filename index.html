@@ -4,12 +4,12 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <meta name="theme-color" content="#121212" />
-<meta name="description" content="Spotify Bilingual Lyrics - lời bài hát đồng bộ và dịch song ngữ" />
+<meta name="description" content="Spotify Bilingual Lyrics V4 - nghe nhạc, lời đồng bộ và dịch song ngữ" />
 <link rel="manifest" href="./manifest.json" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<title>Spotify Bilingual Lyrics</title>
+<title>Spotify Bilingual Lyrics V4</title>
 <style>
 :root{--bg:#121212;--surface:#181818;--surface2:#242424;--border:#333;--green:#1ed760;--green2:#1db954;--text:#fff;--muted:#b3b3b3;--trans:#b8f5ca;--danger:#ff6b6b}
 *{box-sizing:border-box}html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
@@ -24,6 +24,15 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;pa
 /* v3 library/search/collection */
 .navtabs{width:min(760px,100%);display:flex;gap:6px;overflow-x:auto;padding:2px 0}.tabbtn{white-space:nowrap;border:1px solid var(--border);background:var(--surface);color:var(--muted);padding:8px 12px;border-radius:999px;cursor:pointer}.tabbtn.active{background:var(--green);color:#000;border-color:var(--green);font-weight:800}.panel{width:min(760px,100%);flex:1;min-height:0;overflow:auto;padding:4px 0 110px;display:none}.panel.active{display:block}.searchbar{display:flex;gap:8px;position:sticky;top:0;background:var(--bg);z-index:4;padding:6px 0 12px}.searchbar input{flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:999px;padding:11px 15px}.list{display:flex;flex-direction:column;gap:8px}.item{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:11px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:9px}.item-cover{width:56px;height:56px;object-fit:cover;border-radius:7px;background:#2b2b2b}.item-title{font-weight:750;line-height:1.3}.item-sub{font-size:.82rem;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.item-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.item-actions .tiny{padding:5px 9px}.section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 12px}.section-head h3{margin:0}.playlist-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}.playlist-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;cursor:pointer}.playlist-card:hover{border-color:var(--green)}.playlist-name{font-weight:800}.playlist-meta{font-size:.8rem;color:var(--muted);margin-top:5px}.inline-create{display:flex;gap:8px;margin:10px 0 14px}.inline-create input{flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:9px 11px}.backrow{display:flex;gap:8px;align-items:center;margin-bottom:10px}.empty-small{color:var(--muted);text-align:center;padding:40px 15px;line-height:1.6}.badge{font-size:.7rem;border:1px solid var(--border);color:var(--muted);padding:2px 6px;border-radius:999px}.playlist-picker-list{max-height:50vh;overflow:auto;display:flex;flex-direction:column;gap:7px;margin-top:10px}.pick-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border);border-radius:10px;padding:9px 10px}.pick-row:hover{border-color:var(--green)}
 @media(max-width:640px){.item{grid-template-columns:48px 1fr}.item-cover{width:48px;height:48px}.item-actions{grid-column:1/-1;justify-content:flex-start}.playlist-grid{grid-template-columns:1fr}.navtabs{padding-bottom:4px}.panel{padding-bottom:90px}}
+
+/* v4 Spotify-style web player */
+.player-shell{width:min(760px,100%);background:linear-gradient(180deg,#202020,#151515);border:1px solid var(--border);border-radius:18px;padding:14px 16px;box-shadow:0 10px 30px rgba(0,0,0,.22)}
+.player-top{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center}.player-now{min-width:0;display:flex;gap:12px;align-items:center}.player-cover{width:76px;height:76px;border-radius:10px;background:#292929;object-fit:cover;box-shadow:0 8px 22px rgba(0,0,0,.4)}.player-meta{min-width:0}.player-title{font-weight:850;font-size:1.04rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.player-artist{color:var(--muted);font-size:.86rem;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.player-device{margin-top:7px;color:var(--green);font-size:.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.player-controls{display:flex;align-items:center;justify-content:center;gap:10px}.round{width:38px;height:38px;border-radius:50%;border:0;background:transparent;color:#ddd;font-size:1.1rem;cursor:pointer;display:grid;place-items:center}.round:hover{color:#fff;transform:scale(1.06)}.round.play{width:48px;height:48px;background:#fff;color:#000;font-size:1.25rem;font-weight:900}.round:disabled{opacity:.35;cursor:not-allowed;transform:none}
+.progress-row{display:grid;grid-template-columns:42px 1fr 42px;gap:9px;align-items:center;margin-top:12px;color:var(--muted);font-size:.72rem}.range{width:100%;accent-color:#fff;cursor:pointer}.range:hover{accent-color:var(--green)}.player-bottom{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px}.player-left,.player-right{display:flex;align-items:center;gap:8px}.player-note{font-size:.72rem;color:var(--muted)}.volume-wrap{display:flex;align-items:center;gap:7px;width:150px}.volume-wrap input{min-width:0}
+.player-error{display:none;margin-top:10px;padding:9px 11px;border-radius:10px;background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.28);color:#ffc4c4;font-size:.78rem;line-height:1.45}.player-error.show{display:block}
+.item-actions .play-track{background:var(--green);color:#000;border-color:var(--green);font-weight:800}.item-actions .play-track:hover{color:#000;filter:brightness(1.08)}
+@media(max-width:640px){.player-shell{padding:12px;border-radius:16px}.player-top{grid-template-columns:1fr}.player-now{gap:10px}.player-cover{width:64px;height:64px}.player-controls{justify-content:center;margin-top:2px}.round{width:36px;height:36px}.round.play{width:48px;height:48px}.player-bottom{align-items:flex-start}.player-note{max-width:52%}.volume-wrap{width:120px}.progress-row{grid-template-columns:36px 1fr 36px}.player-title{font-size:1rem}}
 </style>
 </head>
 <body>
@@ -39,6 +48,26 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;pa
     <img class="cover" id="cover" alt="Bìa bài hát" />
     <div><div class="track-title" id="trackTitle">Chưa kết nối Spotify</div><div class="track-artist" id="trackArtist">Bật một bài hát trên Spotify để bắt đầu</div></div>
     <div class="status" id="syncStatus">[Chờ đồng bộ]</div>
+  </section>
+
+  <section class="player-shell" id="playerShell">
+    <div class="player-top">
+      <div class="player-now">
+        <img class="player-cover" id="playerCover" alt="Ảnh bìa" />
+        <div class="player-meta"><div class="player-title" id="playerTitle">Spotify Web Player</div><div class="player-artist" id="playerArtist">Chọn một bài hát để phát</div><div class="player-device" id="playerDevice">● Chưa khởi tạo thiết bị phát</div></div>
+      </div>
+      <div class="player-controls">
+        <button class="round" id="prevBtn" title="Bài trước" disabled>⏮</button>
+        <button class="round play" id="playPauseBtn" title="Phát / Tạm dừng" disabled>▶</button>
+        <button class="round" id="nextBtn" title="Bài tiếp" disabled>⏭</button>
+      </div>
+    </div>
+    <div class="progress-row"><span id="elapsedText">0:00</span><input class="range" id="seekRange" type="range" min="0" max="1000" value="0" disabled><span id="durationText">0:00</span></div>
+    <div class="player-bottom">
+      <div class="player-left"><button class="tiny" id="activatePlayerBtn">🎧 Kích hoạt trình phát</button><span class="player-note">Premium • phát trực tiếp trong app</span></div>
+      <div class="player-right"><div class="volume-wrap"><span>🔊</span><input class="range" id="volumeRange" type="range" min="0" max="100" value="70" disabled></div></div>
+    </div>
+    <div class="player-error" id="playerError"></div>
   </section>
   <nav class="navtabs" id="navTabs">
     <button class="tabbtn active" data-tab="now">▶ Đang phát</button>
@@ -85,7 +114,7 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;pa
   <div class="field"><label>Spotify Client ID</label><input id="spotifyClientId" placeholder="Dán Client ID của Spotify Developer App" /></div>
   <div class="field"><label>Google Cloud Translation API Key</label><input id="googleApiKey" type="password" placeholder="Dán Google Translate API Key" /></div>
   <div class="field"><label>Ngôn ngữ dịch mặc định</label><select id="defaultLang"><option value="vi">Tiếng Việt</option><option value="zh-CN">中文</option><option value="en">English</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="es">Español</option><option value="th">ไทย</option></select></div>
-  <div class="hint">Spotify Redirect URI cần thêm chính xác vào Spotify Developer Dashboard:<br><code id="redirectHint"></code><br><br>Ứng dụng dùng OAuth PKCE, không cần Client Secret. Bản này cần quyền Thư viện + Playlist; sau khi cập nhật hãy ngắt kết nối và kết nối Spotify lại một lần. API key Google được lưu trong trình duyệt của thiết bị này; khi triển khai công khai nên giới hạn key theo HTTP referrer/domain.</div>
+  <div class="hint">Spotify Redirect URI cần thêm chính xác vào Spotify Developer Dashboard:<br><code id="redirectHint"></code><br><br>Ứng dụng dùng OAuth PKCE, không cần Client Secret. Bản V4 cần thêm quyền streaming + điều khiển phát nhạc. Sau khi cập nhật, hãy ngắt kết nối và kết nối Spotify lại một lần. Trình phát Web Playback SDK yêu cầu Spotify Premium. API key Google được lưu trong trình duyệt của thiết bị này; khi triển khai công khai nên giới hạn key theo HTTP referrer/domain.</div>
   <div class="dialog-actions"><button class="btn primary" id="saveSettingsBtn">Lưu</button><button class="btn" id="closeSettingsBtn">Đóng</button></div>
 </div></div>
 
@@ -100,6 +129,7 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;pa
 <div class="popup" id="dictPopup"><button class="close-x" id="closePopup">×</button><div class="popup-title" id="dictWord"></div><div class="popup-body" id="dictMeaning">Đang tra...</div></div>
 <div class="toast" id="toast"></div>
 
+<script src="https://sdk.scdn.co/spotify-player.js"></script>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
@@ -113,6 +143,7 @@ let refreshToken = localStorage.getItem(LS.refresh) || '';
 let expiresAt = Number(localStorage.getItem(LS.expires) || 0);
 let lyrics = [], lastTrackId = '', currentTrackKey = '', pollTimer = null, activeIndex = -1, isPlaying = false;
 let progressAnchorMs = 0, progressAnchorAt = 0;
+let webPlayer=null, webDeviceId='', playerReady=false, playerDurationMs=0, playerPositionMs=0, playerTrackUri='', playerStateTimer=null;
 const translationCache = new Map();
 
 function redirectUri(){ return location.origin + location.pathname; }
@@ -128,7 +159,7 @@ async function spotifyLogin(){
   if(location.protocol==='file:'){ toast('Spotify đăng nhập cần chạy qua HTTPS/localhost, không mở trực tiếp file HTML.'); return; }
   const verifier=randomString(72), challenge=base64url(await sha256(verifier)), state=randomString(24);
   localStorage.setItem(LS.verifier,verifier); localStorage.setItem(LS.state,state);
-  const p=new URLSearchParams({client_id:spotifyClientId,response_type:'code',redirect_uri:redirectUri(),scope:'user-read-currently-playing user-read-playback-state user-library-read user-library-modify playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public',code_challenge_method:'S256',code_challenge:challenge,state});
+  const p=new URLSearchParams({client_id:spotifyClientId,response_type:'code',redirect_uri:redirectUri(),scope:'streaming user-read-email user-read-private user-read-currently-playing user-read-playback-state user-modify-playback-state user-library-read user-library-modify playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public',code_challenge_method:'S256',code_challenge:challenge,state});
   location.href='https://accounts.spotify.com/authorize?'+p.toString();
 }
 async function exchangeCode(code){
@@ -144,7 +175,7 @@ async function ensureToken(){
   const body=new URLSearchParams({client_id:spotifyClientId,grant_type:'refresh_token',refresh_token:refreshToken});
   const res=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body}); const data=await res.json(); if(!res.ok) throw new Error('Không thể làm mới Spotify token'); saveTokens(data); return accessToken;
 }
-function logoutSpotify(){ playlistsCache=[]; [LS.access,LS.refresh,LS.expires,LS.verifier,LS.state].forEach(k=>localStorage.removeItem(k)); accessToken='';refreshToken='';expiresAt=0;lastTrackId='';clearInterval(pollTimer);pollTimer=null;updateLoginUI(); $('trackTitle').textContent='Đã ngắt kết nối Spotify';$('trackArtist').textContent='';$('syncStatus').textContent='[Chưa kết nối]'; }
+function logoutSpotify(){ if(webPlayer){try{webPlayer.disconnect()}catch(_){ }webPlayer=null;webDeviceId='';setPlayerReadyUI(false);} playlistsCache=[]; [LS.access,LS.refresh,LS.expires,LS.verifier,LS.state].forEach(k=>localStorage.removeItem(k)); accessToken='';refreshToken='';expiresAt=0;lastTrackId='';clearInterval(pollTimer);pollTimer=null;updateLoginUI(); $('trackTitle').textContent='Đã ngắt kết nối Spotify';$('trackArtist').textContent='';$('syncStatus').textContent='[Chưa kết nối]'; }
 function updateLoginUI(){ const b=$('loginBtn'); if(accessToken||refreshToken){b.textContent='🟢 Spotify đã kết nối';b.title='Bấm để ngắt kết nối';}else{b.textContent='🔗 Kết nối Spotify';b.title='';} }
 
 async function fetchCurrentlyPlaying(force=false){
@@ -156,7 +187,7 @@ async function fetchCurrentlyPlaying(force=false){
     if(!res.ok) throw new Error('Spotify HTTP '+res.status);
     const d=await res.json(); if(!d.item) return;
     const name=d.item.name||'', artist=(d.item.artists||[]).map(a=>a.name).join(', '), id=d.item.id||d.item.uri, album=d.item.album?.name||'', cover=d.item.album?.images?.[1]?.url||d.item.album?.images?.[0]?.url||'';
-    $('trackTitle').textContent=name;$('trackArtist').textContent=artist+(album?' • '+album:'');if(cover)$('cover').src=cover;
+    $('trackTitle').textContent=name;$('trackArtist').textContent=artist+(album?' • '+album:'');if(cover)$('cover').src=cover;$('playerTitle').textContent=name;$('playerArtist').textContent=artist;if(cover)$('playerCover').src=cover;
     isPlaying=!!d.is_playing;progressAnchorMs=d.progress_ms||0;progressAnchorAt=Date.now();
     if(force||id!==lastTrackId){ lastTrackId=id; currentTrackKey=id||name+'|'+artist; await fetchLyrics(name,artist,album,d.item.duration_ms||0); }
     syncLyrics(getEstimatedProgress()/1000);
@@ -197,6 +228,49 @@ function restoreCachedTranslations(){try{const arr=JSON.parse(localStorage.getIt
 async function lookupWord(word){ if(!word)return;$('dictWord').textContent=word;$('dictMeaning').textContent='Đang tra…';$('dictPopup').classList.add('open');try{const out=await googleTranslate([word],$('targetLang').value);$('dictMeaning').innerHTML='Nghĩa: <b>'+esc(out[0]||'')+'</b>';}catch(e){$('dictMeaning').textContent=e.message;} }
 
 
+
+// ---------- Spotify Web Playback SDK v4 ----------
+function fmtTime(ms){ms=Math.max(0,Number(ms)||0);const s=Math.floor(ms/1000),m=Math.floor(s/60);return m+':'+String(s%60).padStart(2,'0');}
+function showPlayerError(msg=''){const el=$('playerError');if(!msg){el.classList.remove('show');el.textContent='';return;}el.textContent=msg;el.classList.add('show');}
+function setPlayerReadyUI(ready){playerReady=ready;['prevBtn','playPauseBtn','nextBtn','seekRange','volumeRange'].forEach(id=>$(id).disabled=!ready);$('activatePlayerBtn').textContent=ready?'✓ Trình phát đã sẵn sàng':'🎧 Kích hoạt trình phát';}
+function updatePlayerUI(state){
+  if(!state)return; const tr=state.track_window?.current_track; playerPositionMs=state.position||0;playerDurationMs=state.duration||tr?.duration_ms||0;playerTrackUri=tr?.uri||'';isPlaying=!state.paused;progressAnchorMs=playerPositionMs;progressAnchorAt=Date.now();
+  $('playPauseBtn').textContent=isPlaying?'❚❚':'▶'; $('elapsedText').textContent=fmtTime(playerPositionMs);$('durationText').textContent=fmtTime(playerDurationMs);$('seekRange').value=playerDurationMs?Math.round(playerPositionMs/playerDurationMs*1000):0;
+  if(tr){const img=tr.album?.images?.[0]?.url||'';$('playerTitle').textContent=tr.name||'Không rõ bài hát';$('playerArtist').textContent=(tr.artists||[]).map(a=>a.name).join(', ');if(img)$('playerCover').src=img;}
+}
+async function initWebPlayer(){
+  if(webPlayer||!window.Spotify||!(accessToken||refreshToken))return;
+  try{
+    webPlayer=new Spotify.Player({name:'Bilingual Lyrics Player',getOAuthToken:async cb=>{try{cb(await ensureToken())}catch(e){showPlayerError(e.message)}},volume:0.7});
+    webPlayer.addListener('ready',({device_id})=>{webDeviceId=device_id;setPlayerReadyUI(true);$('playerDevice').textContent='● Bilingual Lyrics Player • sẵn sàng';showPlayerError('');});
+    webPlayer.addListener('not_ready',({device_id})=>{if(device_id===webDeviceId)setPlayerReadyUI(false);$('playerDevice').textContent='● Thiết bị phát đang ngoại tuyến';});
+    webPlayer.addListener('player_state_changed',state=>{if(state)updatePlayerUI(state);});
+    webPlayer.addListener('initialization_error',({message})=>showPlayerError('Không khởi tạo được trình phát: '+message));
+    webPlayer.addListener('authentication_error',({message})=>showPlayerError('Spotify từ chối xác thực trình phát: '+message+' — hãy kết nối Spotify lại.'));
+    webPlayer.addListener('account_error',()=>showPlayerError('Spotify Web Playback SDK yêu cầu tài khoản Spotify Premium.'));
+    webPlayer.addListener('playback_error',({message})=>showPlayerError('Lỗi phát nhạc: '+message));
+    await webPlayer.connect();
+  }catch(e){showPlayerError(e.message);}
+}
+window.onSpotifyWebPlaybackSDKReady=()=>initWebPlayer();
+async function activateWebPlayer(){
+  if(!webPlayer){await initWebPlayer();}
+  if(!webDeviceId){toast('Trình phát đang khởi tạo. Hãy chạm lại sau khi hiện “sẵn sàng”.');return;}
+  try{await spotifyApi('/me/player',{method:'PUT',body:{device_ids:[webDeviceId],play:false}});if(webPlayer?.activateElement)await webPlayer.activateElement();toast('Đã chọn trình phát trong ứng dụng.');showPlayerError('');}catch(e){showPlayerError(e.message);throw e;}
+}
+async function playTrackInApp(t){
+  if(!playerReady||!webDeviceId)await activateWebPlayer(); if(!webDeviceId)throw new Error('Trình phát chưa sẵn sàng.');
+  const uri=t.uri||('spotify:track:'+t.id); const x=trackData(t);
+  try{if(webPlayer?.activateElement)await webPlayer.activateElement();await spotifyApi('/me/player',{method:'PUT',body:{device_ids:[webDeviceId],play:false}});await spotifyApi('/me/player/play?device_id='+encodeURIComponent(webDeviceId),{method:'PUT',body:{uris:[uri]}});$('playerTitle').textContent=x.name;$('playerArtist').textContent=x.artist;if(x.cover)$('playerCover').src=x.cover;switchTab('now');await viewTrackLyrics(t);isPlaying=true;$('playPauseBtn').textContent='❚❚';toast('Đang phát trong Bilingual Lyrics Player.');}catch(e){if(/Premium|403/i.test(e.message))showPlayerError('Không thể phát trực tiếp. Web Playback SDK và API điều khiển phát nhạc yêu cầu Spotify Premium.');throw e;}
+}
+async function togglePlayPause(){if(!webPlayer||!playerReady)return activateWebPlayer();try{await webPlayer.togglePlay();}catch(e){showPlayerError(e.message);}}
+async function previousTrack(){try{if(webPlayer)await webPlayer.previousTrack();}catch(e){showPlayerError(e.message);}}
+async function nextTrack(){try{if(webPlayer)await webPlayer.nextTrack();}catch(e){showPlayerError(e.message);}}
+async function seekPlayer(){if(!webPlayer||!playerDurationMs)return;const ms=Math.round(Number($('seekRange').value)/1000*playerDurationMs);try{await webPlayer.seek(ms);}catch(e){showPlayerError(e.message);}}
+async function setPlayerVolume(){if(!webPlayer)return;try{await webPlayer.setVolume(Number($('volumeRange').value)/100);}catch(e){showPlayerError(e.message);}}
+function animatePlayerProgress(){if(isPlaying&&playerDurationMs){const ms=Math.min(playerDurationMs,getEstimatedProgress());$('elapsedText').textContent=fmtTime(ms);$('durationText').textContent=fmtTime(playerDurationMs);$('seekRange').value=Math.round(ms/playerDurationMs*1000);}requestAnimationFrame(animatePlayerProgress);}
+requestAnimationFrame(animatePlayerProgress);
+
 // ---------- Spotify catalog / library / playlists v3 ----------
 let playlistsCache=[], pickerTrack=null, currentTab='now';
 async function spotifyApi(path,options={}){
@@ -219,11 +293,11 @@ function switchTab(name){
 function trackData(t){return {id:t.id,uri:t.uri||('spotify:track:'+t.id),name:t.name||'',artist:(t.artists||[]).map(a=>a.name).join(', '),album:t.album?.name||'',cover:t.album?.images?.[1]?.url||t.album?.images?.[0]?.url||'',duration:t.duration_ms||0,spotifyUrl:t.external_urls?.spotify||''};}
 function renderTrackItem(t,context='search'){
   const x=trackData(t), img=x.cover?`<img class="item-cover" src="${esc(x.cover)}" alt="">`:'<div class="item-cover"></div>';
-  return `<div class="item" data-track-id="${esc(x.id)}"><div>${img}</div><div><div class="item-title">${esc(x.name)}</div><div class="item-sub">${esc(x.artist)}${x.album?' • '+esc(x.album):''}</div></div><div class="item-actions"><button class="tiny" data-act="lyrics">🎤 Xem lời</button><button class="tiny" data-act="save">♡ Lưu</button><button class="tiny" data-act="collection">+ Bộ sưu tập</button>${x.spotifyUrl?`<a class="tiny" style="text-decoration:none" target="_blank" rel="noopener" href="${esc(x.spotifyUrl)}">▶ Spotify</a>`:''}</div></div>`;
+  return `<div class="item" data-track-id="${esc(x.id)}"><div>${img}</div><div><div class="item-title">${esc(x.name)}</div><div class="item-sub">${esc(x.artist)}${x.album?' • '+esc(x.album):''}</div></div><div class="item-actions"><button class="tiny play-track" data-act="play">▶ Phát</button><button class="tiny" data-act="lyrics">🎤 Xem lời</button><button class="tiny" data-act="save">♡ Lưu</button><button class="tiny" data-act="collection">+ Bộ sưu tập</button>${x.spotifyUrl?`<a class="tiny" style="text-decoration:none" target="_blank" rel="noopener" href="${esc(x.spotifyUrl)}">▶ Spotify</a>`:''}</div></div>`;
 }
 function bindTrackList(container,tracks){
   container._tracks=tracks;
-  container.onclick=async e=>{const act=e.target.closest('[data-act]');if(!act)return;const row=act.closest('[data-track-id]');const t=(container._tracks||[]).find(z=>z.id===row?.dataset.trackId);if(!t)return;try{if(act.dataset.act==='lyrics')await viewTrackLyrics(t);if(act.dataset.act==='save')await saveTrack(t,act);if(act.dataset.act==='collection')await openPlaylistPicker(t);}catch(err){toast(err.message);}};
+  container.onclick=async e=>{const act=e.target.closest('[data-act]');if(!act)return;const row=act.closest('[data-track-id]');const t=(container._tracks||[]).find(z=>z.id===row?.dataset.trackId);if(!t)return;try{if(act.dataset.act==='play')await playTrackInApp(t);if(act.dataset.act==='lyrics')await viewTrackLyrics(t);if(act.dataset.act==='save')await saveTrack(t,act);if(act.dataset.act==='collection')await openPlaylistPicker(t);}catch(err){showPlayerError(err.message);toast(err.message);}};
 }
 async function searchSpotify(){
   const q=$('searchInput').value.trim(); if(!q)return; const box=$('searchResults');box.innerHTML='<div class="empty-small">Đang tìm...</div>';
@@ -282,12 +356,17 @@ $('backCollectionsBtn').onclick=closePlaylistDetail;
 $('closePickerBtn').onclick=closePicker;$('playlistPickerModal').addEventListener('click',e=>{if(e.target===$('playlistPickerModal'))closePicker();});
 $('pickerCreateBtn').onclick=async()=>{try{const p=await createPlaylist($('pickerNewPlaylist').value);$('pickerNewPlaylist').value='';renderPicker();toast('Đã tạo '+p.name);}catch(e){toast(e.message);}};
 
+
+$('activatePlayerBtn').onclick=()=>activateWebPlayer().catch(e=>toast(e.message));
+$('playPauseBtn').onclick=togglePlayPause;$('prevBtn').onclick=previousTrack;$('nextBtn').onclick=nextTrack;
+$('seekRange').addEventListener('change',seekPlayer);$('volumeRange').addEventListener('input',setPlayerVolume);
+
 async function init(){
   const lang=localStorage.getItem(LS.lang)||'vi';$('targetLang').value=lang;$('defaultLang').value=lang;$('redirectHint').textContent=redirectUri();updateApiState();
   const q=new URLSearchParams(location.search),code=q.get('code'),state=q.get('state'),error=q.get('error');
   if(error){toast('Spotify: '+error);history.replaceState({},'',location.pathname);}
   if(code){try{const expected=localStorage.getItem(LS.state);if(expected&&state!==expected)throw new Error('OAuth state không khớp');await exchangeCode(code);history.replaceState({},'',location.pathname);toast('Đã kết nối Spotify.');}catch(e){console.error(e);toast(e.message);}}
-  updateLoginUI();if(accessToken||refreshToken)startPolling();
+  updateLoginUI();if(accessToken||refreshToken){startPolling();initWebPlayer();}
 }
 init();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
