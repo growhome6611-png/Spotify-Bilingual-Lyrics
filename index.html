@@ -78,6 +78,7 @@ body.lyrics-mode{overflow:hidden}
 }
 @media(min-width:641px){.full-line{font-size:2.35rem}.lyrics-scroll{max-width:920px;width:100%;margin:0 auto;padding-left:54px;padding-right:54px}.lyrics-bottom{left:50%;transform:translateX(-50%);width:min(920px,100%)}}
 
+.lib-filters{display:flex;gap:8px;overflow-x:auto;padding:6px 0 14px;scrollbar-width:none}.lib-filter{flex:none;border:0;border-radius:28px;padding:10px 14px;background:#292929;color:#eee;font:inherit;cursor:pointer}.lib-filter.selected{background:#1ed760;color:#08160d;font-weight:700}.lib-heading{font-size:1.06rem;font-weight:750;margin:18px 0 10px}.lib-row{display:flex;align-items:center;gap:12px;padding:8px 2px;min-height:70px;cursor:pointer}.lib-art,.lib-art img{width:62px;height:62px;object-fit:cover;border-radius:6px;flex:none}.lib-art{display:grid;place-items:center;background:#333;font-size:26px}.lib-info{flex:1;min-width:0}.lib-name{font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.lib-sub{font-size:.85rem;color:#aaa;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.lib-link{color:#aaa;text-decoration:none;font-size:23px;padding:8px}.lib-track .item{margin:6px 0}.lib-track .item-actions{flex-wrap:wrap}#panel-library{overflow-x:hidden}
 </style>
 </head>
 <body>
@@ -151,8 +152,9 @@ body.lyrics-mode{overflow:hidden}
   </section>
 
   <section class="panel" id="panel-library">
-    <div class="section-head"><h3>♡ Thư viện Spotify</h3><button class="btn" id="reloadLibraryBtn">↻ Làm mới</button></div>
-    <div class="list" id="libraryList"><div class="empty-small">Mở tab này để tải các bài bạn đã lưu.</div></div>
+    <div class="section-head"><h3>Thư viện</h3><button class="btn" id="reloadLibraryBtn">↻ Làm mới</button></div>
+    <div class="lib-filters" id="libraryFilters"><button class="lib-filter selected" data-lib="all">Tất cả</button><button class="lib-filter" data-lib="playlists">Danh sách phát</button><button class="lib-filter" data-lib="tracks">Bài hát</button><button class="lib-filter" data-lib="albums">Album</button><button class="lib-filter" data-lib="artists">Nghệ sĩ</button><button class="lib-filter" data-lib="shows">Podcast</button></div>
+    <div class="list" id="libraryList"><div class="empty-small">Mở tab này để tải thư viện Spotify.</div></div>
   </section>
 
   <section class="panel" id="panel-collections">
@@ -257,7 +259,7 @@ async function spotifyLogin(){
   if(location.protocol==='file:'){ toast('Spotify đăng nhập cần chạy qua HTTPS/localhost, không mở trực tiếp file HTML.'); return; }
   const verifier=randomString(72), challenge=base64url(await sha256(verifier)), state=randomString(24);
   localStorage.setItem(LS.verifier,verifier); localStorage.setItem(LS.state,state);
-  const p=new URLSearchParams({client_id:spotifyClientId,response_type:'code',redirect_uri:redirectUri(),scope:'streaming user-read-email user-read-private user-read-currently-playing user-read-playback-state user-modify-playback-state user-library-read user-library-modify playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public',code_challenge_method:'S256',code_challenge:challenge,state});
+  const p=new URLSearchParams({client_id:spotifyClientId,response_type:'code',redirect_uri:redirectUri(),scope:'streaming user-read-email user-read-private user-read-currently-playing user-read-playback-state user-modify-playback-state user-library-read user-library-modify user-follow-read playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public',code_challenge_method:'S256',code_challenge:challenge,state});
   location.href='https://accounts.spotify.com/authorize?'+p.toString();
 }
 async function exchangeCode(code){
@@ -509,10 +511,39 @@ async function searchSpotify(){
 async function saveTrack(t,btn){
   const uri=t.uri||('spotify:track:'+t.id);await spotifyApi('/me/library?uris='+encodeURIComponent(uri),{method:'PUT'});if(btn){btn.textContent='♥ Đã lưu';btn.disabled=true;}toast('Đã thêm vào Thư viện Spotify.');
 }
-async function loadLibrary(){
-  const box=$('libraryList');box.innerHTML='<div class="empty-small">Đang tải thư viện...</div>';
-  try{const d=await spotifyApi('/me/tracks?limit=50');const items=(d?.items||[]).map(x=>x.track).filter(Boolean);box.innerHTML=items.length?items.map(t=>renderTrackItem(t,'library')).join(''):'<div class="empty-small">Thư viện chưa có bài hát.</div>';bindTrackList(box,items);}catch(e){box.innerHTML='<div class="empty-small">'+esc(e.message)+'</div>';}
+const libState={filter:'all',data:{},errors:{},loaded:false};
+function libCard(kind,x){
+ const img=x.images?.[0]?.url||x.album?.images?.[0]?.url||x.show?.images?.[0]?.url||'';
+ const title=x.name||x.show?.name||'Không có tên';
+ const subtitle=kind==='playlists'?'Danh sách phát':kind==='albums'?'Album • '+(x.artists||[]).map(a=>a.name).join(', '):kind==='artists'?'Nghệ sĩ':kind==='shows'?'Podcast':(x.artists||[]).map(a=>a.name).join(', ');
+ const href=x.external_urls?.spotify||x.show?.external_urls?.spotify||'';
+ return `<div class="lib-row" data-kind="${kind}" data-id="${esc(x.id||'')}"><div class="lib-art">${img?`<img src="${esc(img)}" loading="lazy" alt="">`:'♫'}</div><div class="lib-info"><div class="lib-name">${esc(title)}</div><div class="lib-sub">${esc(subtitle)}</div></div>${href?`<a class="lib-link" href="${esc(href)}" target="_blank" rel="noopener" aria-label="Mở Spotify">↗</a>`:''}</div>`;
 }
+function renderLibrary(){
+ const box=$('libraryList'),filter=libState.filter;
+ const sections=[['playlists','Danh sách phát'],['tracks','Bài hát đã thích'],['albums','Album đã lưu'],['artists','Nghệ sĩ đang theo dõi'],['shows','Podcast đã lưu']];
+ let html='';
+ for(const [key,label] of sections){if(filter!=='all'&&filter!==key)continue;const items=libState.data[key]||[];html+=`<div class="lib-heading">${label}</div>`;
+ if(libState.errors[key])html+=`<div class="empty-small">${esc(libState.errors[key])}</div>`;
+ else if(!items.length)html+='<div class="empty-small">Chưa có mục nào hoặc chưa được Spotify cấp quyền truy cập.</div>';
+ else html+=items.map(x=>key==='tracks'?`<div class="lib-track">${renderTrackItem(x,'library')}</div>`:libCard(key,x)).join('');
+ }
+ box.innerHTML=html;
+ const tracks=libState.data.tracks||[];
+ box.onclick=async e=>{const action=e.target.closest('[data-act]');if(action){const row=action.closest('[data-track-id]');const t=tracks.find(x=>x.id===row?.dataset.trackId);if(!t)return;try{if(action.dataset.act==='play')await playTrackInApp(t);if(action.dataset.act==='lyrics')await viewTrackLyrics(t);if(action.dataset.act==='save')await saveTrack(t,action);if(action.dataset.act==='collection')await openPlaylistPicker(t);}catch(err){toast(err.message);}return;}
+ const card=e.target.closest('.lib-row');if(!card||e.target.closest('a'))return;
+ if(card.dataset.kind==='playlists'){switchTab('collections');await loadPlaylists(true);await openPlaylist(card.dataset.id);}else{const obj=(libState.data[card.dataset.kind]||[]).find(x=>x.id===card.dataset.id);const url=obj?.external_urls?.spotify||obj?.show?.external_urls?.spotify;if(url)window.open(url,'_blank','noopener');}
+ };
+}
+async function fetchSpotifyPages(path,maxPages=4){let next=path,out=[];for(let i=0;next&&i<maxPages;i++){const d=await spotifyApi(next.startsWith('https://api.spotify.com/v1')?next.slice('https://api.spotify.com/v1'.length):next);out.push(...(d?.items||[]));next=d?.next||null;}return out;}
+async function loadLibrary(){
+ const box=$('libraryList');box.innerHTML='<div class="empty-small">Đang đồng bộ thư viện Spotify...</div>';
+ const endpoints={tracks:'/me/tracks?limit=50',playlists:'/me/playlists?limit=50',albums:'/me/albums?limit=50',shows:'/me/shows?limit=50'};
+ const jobs=Object.entries(endpoints).map(async([k,path])=>{try{const rows=await fetchSpotifyPages(path);libState.data[k]=rows.map(x=>k==='tracks'?x.track:k==='albums'?x.album:k==='shows'?x.show:x).filter(Boolean);delete libState.errors[k];}catch(e){libState.data[k]=[];libState.errors[k]=e.message;}});
+ jobs.push((async()=>{try{let cursor='',all=[];for(let i=0;i<4;i++){const d=await spotifyApi('/me/following?type=artist&limit=50'+(cursor?'&after='+encodeURIComponent(cursor):''));const artists=d?.artists;all.push(...(artists?.items||[]));cursor=artists?.cursors?.after;if(!artists?.next||!cursor)break;}libState.data.artists=all;delete libState.errors.artists;}catch(e){libState.data.artists=[];libState.errors.artists=e.message;}})());
+ await Promise.all(jobs);libState.loaded=true;renderLibrary();
+}
+$('libraryFilters').onclick=e=>{const btn=e.target.closest('[data-lib]');if(!btn)return;libState.filter=btn.dataset.lib;document.querySelectorAll('.lib-filter').forEach(b=>b.classList.toggle('selected',b===btn));renderLibrary();};
 async function viewTrackLyrics(t){
   const x=trackData(t);currentTrackKey=x.id||x.name+'|'+x.artist;$('trackTitle').textContent=x.name;$('trackArtist').textContent=x.artist+(x.album?' • '+x.album:'');if(x.cover)$('cover').src=x.cover;$('syncStatus').textContent='[Xem lời từ thư viện]';isPlaying=false;switchTab('now');await fetchLyrics(x.name,x.artist,x.album,x.duration);
 }
