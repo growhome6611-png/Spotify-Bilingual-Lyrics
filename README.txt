@@ -15,3 +15,5 @@ YEU CAU:
 
 
 V8: thêm thanh điều hướng đáy kiểu Spotify và Google Drive Sync cho bản dịch. Cần tạo Google OAuth Client ID loại Web application, thêm domain Vercel vào Authorized JavaScript origins, bật Google Drive API, và dùng scope drive.file.
+
+V11.1: Spotify API limit 10 for search, playlists, albums, library and following; next-page requests clamped to 10.
