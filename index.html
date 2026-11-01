@@ -501,10 +501,36 @@ async function activateWebPlayer(){
   if(!webDeviceId){toast('Trình phát đang khởi tạo. Hãy chạm lại sau khi hiện “sẵn sàng”.');return;}
   try{await spotifyApi('/me/player',{method:'PUT',body:{device_ids:[webDeviceId],play:false}});if(webPlayer?.activateElement)await webPlayer.activateElement();toast('Đã chọn trình phát trong ứng dụng.');showPlayerError('');}catch(e){showPlayerError(e.message);throw e;}
 }
+async function choosePlaybackDevice(){
+  if(webPlayer?.activateElement) {try{await webPlayer.activateElement();}catch(_){}}
+  if(webDeviceId && playerReady){
+    try{await spotifyApi('/me/player',{method:'PUT',body:{device_ids:[webDeviceId],play:false}});return webDeviceId;}
+    catch(e){console.warn('Không chuyển được sang Web Player:',e.message);}
+  }
+  const state=await spotifyApi('/me/player/devices');
+  const devices=(state?.devices||[]).filter(d=>!d.is_restricted);
+  const chosen=devices.find(d=>d.is_active)||devices.find(d=>d.type==='Smartphone')||devices[0];
+  if(!chosen)throw new Error('Không tìm thấy thiết bị Spotify. Hãy mở Spotify trên điện thoại, phát thử một bài, sau đó thử lại.');
+  return chosen.id;
+}
+async function playSpotifyContext(type,id,offsetUri){
+  const uri='spotify:'+type+':'+id;
+  try{
+    const device=await choosePlaybackDevice();
+    const body={context_uri:uri};if(offsetUri)body.offset={uri:offsetUri};
+    await spotifyApi('/me/player/play?device_id='+encodeURIComponent(device),{method:'PUT',body});
+    showPlayerError('');toast('Đã gửi lệnh phát toàn bộ '+(type==='playlist'?'danh sách':'album')+' tới Spotify.');
+    switchTab('now');
+  }catch(e){showPlayerError('Không thể phát playlist: '+e.message);toast(e.message);throw e;}
+}
 async function playTrackInApp(t){
-  if(!playerReady||!webDeviceId)await activateWebPlayer(); if(!webDeviceId)throw new Error('Trình phát chưa sẵn sàng.');
-  const uri=t.uri||('spotify:track:'+t.id); const x=trackData(t);
-  try{if(webPlayer?.activateElement)await webPlayer.activateElement();await spotifyApi('/me/player',{method:'PUT',body:{device_ids:[webDeviceId],play:false}});await spotifyApi('/me/player/play?device_id='+encodeURIComponent(webDeviceId),{method:'PUT',body:{uris:[uri]}});$('playerTitle').textContent=x.name;$('playerArtist').textContent=x.artist;if(x.cover)$('playerCover').src=x.cover;switchTab('now');await viewTrackLyrics(t);isPlaying=true;$('playPauseBtn').textContent='❚❚';toast('Đang phát trong Bilingual Lyrics Player.');}catch(e){if(/Premium|403/i.test(e.message))showPlayerError('Không thể phát trực tiếp. Web Playback SDK và API điều khiển phát nhạc yêu cầu Spotify Premium.');throw e;}
+  const uri=t.uri||('spotify:track:'+t.id),x=trackData(t);
+  try{
+    const device=await choosePlaybackDevice();
+    await spotifyApi('/me/player/play?device_id='+encodeURIComponent(device),{method:'PUT',body:{uris:[uri]}});
+    $('playerTitle').textContent=x.name;$('playerArtist').textContent=x.artist;if(x.cover)$('playerCover').src=x.cover;
+    switchTab('now');await viewTrackLyrics(t);isPlaying=true;$('playPauseBtn').textContent='❚❚';showPlayerError('');toast('Đã gửi lệnh phát bài hát.');
+  }catch(e){showPlayerError('Không thể phát: '+e.message);throw e;}
 }
 async function togglePlayPause(){if(!webPlayer||!playerReady)return activateWebPlayer();try{await webPlayer.togglePlay();}catch(e){showPlayerError(e.message);}}
 async function previousTrack(){try{if(webPlayer)await webPlayer.previousTrack();}catch(e){showPlayerError(e.message);}}
@@ -524,7 +550,7 @@ async function spotifyApi(path,options={}){
   if(res.status===401 && refreshToken){accessToken='';expiresAt=0;await ensureToken();headers.Authorization='Bearer '+accessToken;res=await fetch('https://api.spotify.com/v1'+path,{...options,headers});}
   if(res.status===204) return null;
   const text=await res.text(); let data=null; try{data=text?JSON.parse(text):null}catch(_){data=text}
-  if(!res.ok){const msg=data?.error?.message||data?.error_description||('Spotify HTTP '+res.status); if(res.status===403) throw new Error(msg+' — hãy ngắt kết nối rồi đăng nhập lại để cấp quyền mới.'); throw new Error(msg);}
+  if(!res.ok){const msg=data?.error?.message||data?.error_description||('Spotify HTTP '+res.status); if(res.status===403){const err=new Error('Spotify từ chối yêu cầu (403): '+msg);err.status=403;err.endpoint=path;throw err;} throw new Error(msg);}
   return data;
 }
 function switchTab(name){
@@ -554,7 +580,7 @@ function v11ShowSuggestions(){const q=$('searchInput').value.trim();const box=$(
 function v11Render(){const box=$('searchResults');let html='';const labels={playlist:'Danh sách phát',track:'Bài hát',album:'Album',artist:'Nghệ sĩ'};for(const type of v11Types){if(v11.filter!=='all'&&v11.filter!==type)continue;const d=v11.data[type];if(!d)continue;html+=`<div class="v11-section">${labels[type]} (${d.items?.length||0}${d.next?'+':''})</div>`;if(type==='track'){html+=(d.items||[]).filter(Boolean).map(t=>renderTrackItem(t)).join('');}else html+=(d.items||[]).filter(Boolean).map(x=>v11Card(x,type)).join('');if(d.next)html+=`<button class="v11-more" data-v11-more="${type}">Xem thêm ${labels[type].toLowerCase()}</button>`;}box.innerHTML=html||'<div class="empty-small">Không có kết quả. Thử tên khác hoặc bộ lọc khác.</div>';box._tracks=v11.data.track?.items||[];}
 async function searchSpotify(){const q=$('searchInput').value.trim();if(!q)return;v11.query=q;const seq=++v11.seq;$('searchSuggestions').classList.remove('open');$('searchResults').innerHTML='<div class="empty-small">Đang tìm bài hát, playlist, album và nghệ sĩ...</div>';v11.history=[q,...v11.history.filter(x=>x!==q)].slice(0,12);localStorage.setItem('v11-search-history',JSON.stringify(v11.history));try{const d=await spotifyApi('/search?q='+encodeURIComponent(q)+'&type=track,playlist,album,artist&limit=10');if(seq!==v11.seq)return;v11.data={track:d.tracks||{},playlist:d.playlists||{},album:d.albums||{},artist:d.artists||{}};v11Render();}catch(e){if(seq===v11.seq)$('searchResults').innerHTML='<div class="empty-small">Không thể tìm kiếm: '+v11Safe(e.message)+'<br>Hãy thử lại hoặc đăng nhập Spotify lại.</div>';}}
 async function v11More(type){const d=v11.data[type];if(!d?.next)return;const btn=document.querySelector('[data-v11-more="'+type+'"]');if(btn)btn.textContent='Đang tải...';try{const url=new URL(d.next);url.searchParams.set('limit','10');const page=await spotifyApi(url.pathname.replace(/^\/v1/,'')+url.search);const more=page[type+'s'];if(more){d.items=[...(d.items||[]),...(more.items||[])];d.next=more.next;}v11Render();}catch(e){toast(e.message);}}
-async function v11Open(type,id){const item=(v11.data[type]?.items||[]).find(x=>x?.id===id);if(!item)return;if(type==='track'){await playTrackInApp(item);switchTab('now');return;}if(type==='artist'){const url=item.external_urls?.spotify;if(url)window.open(url,'_blank','noopener');return;}const box=$('searchResults');const image=v11Image(item);box.innerHTML=`<button class="btn v11-back" id="v11Back">← Kết quả tìm kiếm</button><div class="v11-detail"><div class="v11-detail-head">${image?`<img src="${v11Safe(image)}" alt="">`:''}<div><h2>${v11Safe(item.name)}</h2><div class="item-sub">${v11Safe(v11Subtitle(item,type))}</div></div></div><div class="v11-detail-actions"><button class="btn primary" id="v11PlayAll">▶ Phát</button><a class="btn" target="_blank" rel="noopener" href="${v11Safe(item.external_urls?.spotify||'#')}">Mở Spotify</a></div></div><div id="v11DetailTracks" class="list"><div class="empty-small">Đang tải bài hát...</div></div>`;$('v11Back').onclick=v11Render;try{const endpoint=type==='playlist'?'/playlists/'+encodeURIComponent(id)+'/items?limit=10':'/albums/'+encodeURIComponent(id)+'/tracks?limit=10';const d=await spotifyApi(endpoint);const tracks=(d.items||[]).map(z=>type==='playlist'?(z.item||z.track):{...z,album:item}).filter(z=>z&&z.type==='track');const list=$('v11DetailTracks');list.innerHTML=tracks.length?tracks.map(t=>renderTrackItem(t)).join(''):'<div class="empty-small">Danh sách trống hoặc Spotify không cho phép truy cập.</div>';bindTrackList(list,tracks);$('v11PlayAll').onclick=()=>tracks.length?playTrackInApp(tracks[0]).catch(e=>toast(e.message)):toast('Không có bài hát để phát');}catch(e){$('v11DetailTracks').innerHTML='<div class="empty-small">'+v11Safe(e.message)+'</div>';}}
+async function v11Open(type,id){const item=(v11.data[type]?.items||[]).find(x=>x?.id===id);if(!item)return;if(type==='track'){await playTrackInApp(item);switchTab('now');return;}if(type==='artist'){const url=item.external_urls?.spotify;if(url)window.open(url,'_blank','noopener');return;}const box=$('searchResults');const image=v11Image(item);box.innerHTML=`<button class="btn v11-back" id="v11Back">← Kết quả tìm kiếm</button><div class="v11-detail"><div class="v11-detail-head">${image?`<img src="${v11Safe(image)}" alt="">`:''}<div><h2>${v11Safe(item.name)}</h2><div class="item-sub">${v11Safe(v11Subtitle(item,type))}</div></div></div><div class="v11-detail-actions"><button class="btn primary" id="v11PlayAll">▶ Phát</button><a class="btn" target="_blank" rel="noopener" href="${v11Safe(item.external_urls?.spotify||'#')}">Mở Spotify</a></div></div><div id="v11DetailTracks" class="list"><div class="empty-small">Đang tải bài hát...</div></div>`;$('v11Back').onclick=v11Render;$('v11PlayAll').onclick=()=>playSpotifyContext(type,id).catch(()=>{});try{const endpoint=type==='playlist'?'/playlists/'+encodeURIComponent(id)+'/items?limit=10':'/albums/'+encodeURIComponent(id)+'/tracks?limit=10';const d=await spotifyApi(endpoint);const tracks=(d.items||[]).map(z=>type==='playlist'?(z.item||z.track):{...z,album:item}).filter(z=>z&&z.type==='track');const list=$('v11DetailTracks');list.innerHTML=tracks.length?tracks.map(t=>renderTrackItem(t)).join(''):'<div class="empty-small">Danh sách trống hoặc Spotify không cho phép truy cập.</div>';bindTrackList(list,tracks);$('v11PlayAll').onclick=()=>playSpotifyContext(type,id).catch(()=>{});}catch(e){$('v11DetailTracks').innerHTML='<div class="empty-small">'+(type==='playlist'&&e.status===403?'Spotify giới hạn đọc bài hát trong playlist của người khác. Bạn vẫn có thể thử nút Phát ở trên để phát theo playlist trên thiết bị Spotify, hoặc chọn Mở Spotify.':v11Safe(e.message))+'</div>';}}
 async function saveTrack(t,btn){
   const uri=t.uri||('spotify:track:'+t.id);await spotifyApi('/me/library?uris='+encodeURIComponent(uri),{method:'PUT'});if(btn){btn.textContent='♥ Đã lưu';btn.disabled=true;}toast('Đã thêm vào Thư viện Spotify.');
 }
@@ -606,8 +632,8 @@ async function createPlaylist(name){
   name=(name||'').trim();if(!name)throw new Error('Hãy nhập tên bộ sưu tập');const d=await spotifyApi('/me/playlists',{method:'POST',body:{name,public:false,description:'Tạo từ Spotify Bilingual Lyrics'}});playlistsCache.unshift(d);renderPlaylists();return d;
 }
 async function openPlaylist(id){
-  const p=playlistsCache.find(x=>x.id===id);$('collectionsHome').style.display='none';$('playlistDetail').style.display='block';$('playlistDetailName').textContent=p?.name||'Playlist';const box=$('playlistItems');box.innerHTML='<div class="empty-small">Đang tải bài hát...</div>';
-  try{const d=await spotifyApi('/playlists/'+encodeURIComponent(id)+'/items?limit=10');const tracks=(d?.items||[]).map(x=>x.item||x.track).filter(x=>x&&x.type==='track');box.innerHTML=tracks.length?tracks.map(t=>renderTrackItem(t,'playlist')).join(''):'<div class="empty-small">Playlist này chưa có bài hát hoặc Spotify không cho đọc nội dung.</div>';bindTrackList(box,tracks);}catch(e){box.innerHTML='<div class="empty-small">'+esc(e.message)+'</div>';}
+  const p=playlistsCache.find(x=>x.id===id);$('collectionsHome').style.display='none';$('playlistDetail').style.display='block';$('playlistDetailName').textContent=p?.name||'Playlist';const box=$('playlistItems');box.innerHTML='<div class="empty-small">Đang tải bài hát...</div>';let playAll=$('v112LibraryPlayAll');if(!playAll){playAll=document.createElement('button');playAll.id='v112LibraryPlayAll';playAll.className='btn primary';$('playlistDetailName').after(playAll);}playAll.textContent='▶ Phát cả danh sách';playAll.onclick=()=>playSpotifyContext('playlist',id).catch(()=>{});
+  try{const d=await spotifyApi('/playlists/'+encodeURIComponent(id)+'/items?limit=10');const tracks=(d?.items||[]).map(x=>x.item||x.track).filter(x=>x&&x.type==='track');box.innerHTML=tracks.length?tracks.map(t=>renderTrackItem(t,'playlist')).join(''):'<div class="empty-small">Playlist này chưa có bài hát hoặc Spotify không cho đọc nội dung.</div>';bindTrackList(box,tracks);}catch(e){box.innerHTML='<div class="empty-small">'+(e.status===403?'Spotify không cho ứng dụng đọc bài hát của playlist này vì bạn không phải chủ sở hữu hoặc cộng tác viên. Hãy thử “Phát cả danh sách” hoặc mở bằng Spotify.':esc(e.message))+'</div>';}
 }
 function closePlaylistDetail(){$('playlistDetail').style.display='none';$('collectionsHome').style.display='block';}
 async function openPlaylistPicker(t){pickerTrack=t;$('pickerTrackName').textContent=(t.name||'')+' — '+((t.artists||[]).map(a=>a.name).join(', '));$('playlistPickerModal').classList.add('open');await loadPlaylists();renderPicker();}
