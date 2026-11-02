@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<title>Spotify Bilingual Lyrics V11.9</title>
+<title>Spotify Bilingual Lyrics V11.10</title>
 <style>
 :root{--bg:#121212;--surface:#181818;--surface2:#242424;--border:#333;--green:#1ed760;--green2:#1db954;--text:#fff;--muted:#b3b3b3;--trans:#b8f5ca;--danger:#ff6b6b}
 *{box-sizing:border-box}html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
@@ -126,6 +126,11 @@ body > header{display:none!important}
 .quick-player-toolbar{justify-content:flex-end!important;gap:10px!important}
 .quick-player-toolbar .player-icon-btn,.quick-player-toolbar .source-icon-btn{flex:0 0 auto!important}
 @media(max-width:640px){.app{padding-top:4px!important}.player-shell{margin-top:0!important}}
+
+/* V11.10: duplicate track summary must stay hidden on desktop AND mobile.
+   Keep the underlying DOM for existing Spotify/lyrics state updates. */
+.app > .track-card{display:none!important}
+@media(min-width:641px){.app{padding-top:6px;gap:8px}.player-shell{margin-top:0}}
 
 /* V11.9: independently scrolling settings dialog, safe-area footer and restored Drive controls */
 #settingsModal{z-index:310;padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));align-items:center;overscroll-behavior:contain}
