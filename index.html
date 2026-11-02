@@ -107,6 +107,18 @@ header{min-height:48px;padding:7px 12px;gap:8px}
 .player-icon-btn:focus-visible,.source-icon-btn:focus-visible{outline:2px solid #1ed760;outline-offset:3px}
 .player-left .source-icon-btn{width:38px;height:38px;min-width:38px}
 @media(max-width:640px){.player-bottom{margin-top:6px;align-items:center}.player-left{gap:9px;justify-content:flex-end}.player-shell{padding-bottom:9px}.player-icon-btn,.player-left .source-icon-btn{width:36px;height:36px;min-width:36px}}
+
+/* V11.7: single-row quick actions, no extra player height */
+.quick-player-toolbar{display:flex!important;align-items:center;justify-content:space-between!important;flex-wrap:nowrap!important;gap:clamp(2px,1vw,8px)!important;width:100%;min-width:0}
+.quick-player-toolbar .player-icon-btn,.quick-player-toolbar .source-icon-btn,.quick-lang-wrap{width:clamp(30px,8vw,39px)!important;min-width:0!important;height:clamp(32px,8vw,39px)!important;flex:0 1 auto!important;border-radius:50%;font-size:clamp(.88rem,3.5vw,1.1rem);padding:0;display:inline-flex;align-items:center;justify-content:center}
+.quick-lang-wrap{position:relative;border:1px solid #393939;background:#262626;color:white;cursor:pointer}
+.quick-lang-wrap select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:16px}
+.quick-player-toolbar #quickSyncBtn[data-state="busy"]{color:#e7c96e;animation:quick-pulse 1s ease-in-out infinite}
+.quick-player-toolbar #quickSyncBtn[data-state="done"],.quick-player-toolbar #quickDriveBtn[data-connected="true"]{color:#1ed760;border-color:#245e3d}
+.quick-player-toolbar #quickSyncBtn[data-state="error"]{color:#ff7777}
+@keyframes quick-pulse{50%{opacity:.45}}
+.player-bottom{display:block}.player-bottom .player-right{display:none}
+@media(max-width:640px){.player-shell{padding-bottom:8px}.player-bottom{margin-top:7px}.quick-player-toolbar{gap:3px!important}}
 </style>
 </head>
 <body>
@@ -138,7 +150,16 @@ header{min-height:48px;padding:7px 12px;gap:8px}
     </div>
     <div class="progress-row"><span id="elapsedText">0:00</span><input class="range" id="seekRange" type="range" min="0" max="1000" value="0" disabled><span id="durationText">0:00</span></div>
     <div class="player-bottom">
-      <div class="player-left"><button class="player-icon-btn" id="activatePlayerBtn" title="Kích hoạt trình phát Spotify" aria-label="Kích hoạt trình phát Spotify" data-ready="false">🎧</button><span class="player-note">Premium • phát trực tiếp trong app</span><button class="source-icon-btn" id="openSourceBtn" title="Nguồn lời bài hát • Thêm / sửa lời" aria-label="Mở nguồn lời bài hát">📄</button><button class="player-icon-btn" id="openLyricsScreenBtn" title="Mở lời bài hát" aria-label="Mở lời bài hát">🎤</button></div>
+      <div class="player-left quick-player-toolbar" role="toolbar" aria-label="Công cụ nhanh cho bài hát">
+        <button class="player-icon-btn" id="quickTranslateBtn" title="Dịch toàn bài" aria-label="Dịch toàn bài">🌐</button>
+        <label class="quick-lang-wrap" title="Chọn ngôn ngữ dịch"><span aria-hidden="true">🌍</span><select id="quickLang" aria-label="Chọn ngôn ngữ dịch"></select></label>
+        <button class="player-icon-btn" id="quickSyncBtn" title="Đồng bộ tất cả bản dịch với Google Drive" aria-label="Đồng bộ tất cả bản dịch">☁️</button>
+        <button class="player-icon-btn" id="quickDriveBtn" title="Kết nối hoặc kiểm tra Google Drive" aria-label="Kết nối hoặc kiểm tra Google Drive">🔗</button>
+        <button class="player-icon-btn" id="quickSettingsBtn" title="Cài đặt" aria-label="Cài đặt">⚙️</button>
+        <button class="player-icon-btn" id="activatePlayerBtn" title="Kích hoạt trình phát Spotify" aria-label="Kích hoạt trình phát Spotify" data-ready="false">🎧</button>
+        <button class="source-icon-btn" id="openSourceBtn" title="Nguồn lời bài hát • Thêm / sửa lời" aria-label="Mở nguồn lời bài hát">📄</button>
+        <button class="player-icon-btn" id="openLyricsScreenBtn" title="Mở lời bài hát" aria-label="Mở lời bài hát">🎤</button>
+      </div>
       <div class="player-right"><div class="volume-wrap"><span>🔊</span><input class="range" id="volumeRange" type="range" min="0" max="100" value="70" disabled></div></div>
     </div>
     <div class="player-error" id="playerError"></div>
@@ -827,12 +848,32 @@ $('closePickerBtn').onclick=closePicker;$('playlistPickerModal').addEventListene
 $('pickerCreateBtn').onclick=async()=>{try{const p=await createPlaylist($('pickerNewPlaylist').value);$('pickerNewPlaylist').value='';renderPicker();toast('Đã tạo '+p.name);}catch(e){toast(e.message);}};
 
 
+// V11.7: quick controls share the original settings and sync state.
+function updateQuickToolbar(){
+ const q=$('quickLang'),original=$('targetLang');
+ if(q&&original&&q.value!==original.value)q.value=original.value;
+ const drive=$('quickDriveBtn'),sync=$('quickSyncBtn');
+ if(drive){const connected=driveTokenValid();drive.dataset.connected=connected?'true':'false';drive.title=connected?'Google Drive đã kết nối • Nhấn để kiểm tra':'Kết nối Google Drive';drive.setAttribute('aria-label',drive.title);}
+ if(sync){const busy=!!driveBatchRunning||!!driveSyncBusy;sync.dataset.state=busy?'busy':driveSyncError?'error':driveTokenValid()?'done':'idle';sync.title=busy?'Đang đồng bộ...':driveSyncError?'Đồng bộ có lỗi • Nhấn thử lại':'Đồng bộ tất cả bản dịch';sync.disabled=busy;}
+}
+$('quickLang').innerHTML=$('targetLang').innerHTML;
+$('quickLang').value=$('targetLang').value;
+$('quickLang').onchange=()=>{$('targetLang').value=$('quickLang').value;$('targetLang').dispatchEvent(new Event('change'));toast('Ngôn ngữ dịch: '+$('quickLang').selectedOptions[0]?.textContent);};
+$('quickTranslateBtn').onclick=()=>{if(!lyrics.length){toast('Hãy mở một bài hát có lời trước khi dịch.');return;}translateAll();};
+$('quickSettingsBtn').onclick=()=>{closeUtilityDrawer();openSettings();};
+$('quickSyncBtn').onclick=()=>{if(!driveTokenValid()){toast('Hãy kết nối Google Drive trước.');connectGoogleDrive();return;}runDriveBatch('both').catch(e=>toast(e.message));};
+$('quickDriveBtn').onclick=()=>{if(driveTokenValid()){verifyDriveSync().catch(e=>toast(e.message));toast('Đang kiểm tra dữ liệu Google Drive...');}else connectGoogleDrive();};
+const quickSyncObserver=new MutationObserver(updateQuickToolbar);
+quickSyncObserver.observe($('driveSyncBadge'),{childList:true,characterData:true,subtree:true});
+setInterval(updateQuickToolbar,3000);
+updateQuickToolbar();
+
 $('activatePlayerBtn').onclick=()=>activateWebPlayer().catch(e=>toast(e.message));
 $('playPauseBtn').onclick=togglePlayPause;$('prevBtn').onclick=previousTrack;$('nextBtn').onclick=nextTrack;
 $('seekRange').addEventListener('change',seekPlayer);$('volumeRange').addEventListener('input',setPlayerVolume);
 
 async function init(){
-  const lang=localStorage.getItem(LS.lang)||'vi';$('targetLang').value=lang;$('defaultLang').value=lang;$('redirectHint').textContent=redirectUri();updateApiState();updateDriveStatus();setTimeout(()=>{initGoogleTokenClient();updateDriveStatus();},600);
+  const lang=localStorage.getItem(LS.lang)||'vi';$('targetLang').value=lang;$('quickLang').value=lang;$('defaultLang').value=lang;$('redirectHint').textContent=redirectUri();updateApiState();updateDriveStatus();setTimeout(()=>{initGoogleTokenClient();updateDriveStatus();},600);
   const q=new URLSearchParams(location.search),code=q.get('code'),state=q.get('state'),error=q.get('error');
   if(error){toast('Spotify: '+error);history.replaceState({},'',location.pathname);}
   if(code){try{const expected=localStorage.getItem(LS.state);if(expected&&state!==expected)throw new Error('OAuth state không khớp');await exchangeCode(code);history.replaceState({},'',location.pathname);toast('Đã kết nối Spotify.');}catch(e){console.error(e);toast(e.message);}}
