@@ -138,6 +138,14 @@ body.lyrics-mode{overflow:hidden}
     <div class="drive-box">
       <div class="drive-title">☁️ Google Drive Sync</div>
       <div class="drive-status" id="driveStatus">Chưa cấu hình Google Drive.</div>
+      <div id="driveSyncDashboard" style="margin:12px 0;padding:12px;border:1px solid #363636;border-radius:13px;background:#121212;font-size:13px;line-height:1.8">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><strong>Trạng thái sao lưu</strong><strong id="driveSyncBadge" style="color:#aaa">● Chưa kiểm tra</strong></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:9px 0"><div>Bản dịch trên máy<br><strong id="driveLocalCount" style="font-size:20px">—</strong></div><div>Tệp trên Drive<br><strong id="driveRemoteCount" style="font-size:20px">—</strong></div></div>
+        <div id="drivePendingCount">Chưa xác định dữ liệu chờ đồng bộ</div>
+        <div id="driveLastSync">Đồng bộ gần nhất: Chưa có</div>
+        <div id="driveVerifyDetail" style="color:#aaa">Nhấn Kiểm tra đồng bộ để đối chiếu dữ liệu thực tế.</div>
+        <button class="btn" id="verifyDriveBtn" style="margin-top:9px">🔎 Kiểm tra đồng bộ</button>
+      </div>
       <div class="drive-actions">
         <button class="btn primary" id="connectDriveBtn">Kết nối Drive</button>
         <button class="btn" id="syncDriveBtn">Đồng bộ ngay</button>
@@ -364,12 +372,48 @@ async function translateAll(){
 function showTranslation(i){const el=$('tr-'+i);if(el){el.textContent=lyrics[i].translation;el.style.display=lyrics[i].translation?'block':'none';}updateFullTranslation(i);}
 function clearTranslations(){lyrics.forEach((x,i)=>{x.translation='';showTranslation(i);});}
 function cacheKey(){return 'lyric_trans_'+currentTrackKey+'_'+$('targetLang').value;}
-function saveTranslationCache(){if(!currentTrackKey)return;try{localStorage.setItem(cacheKey(),JSON.stringify(lyrics.map(x=>x.translation||'')));}catch(e){} if(hasAnyTranslation()&&driveTokenValid())uploadCurrentTranslationToDrive().catch(()=>{}); }
+function saveTranslationCache(){if(!currentTrackKey)return;try{localStorage.setItem(cacheKey(),JSON.stringify(lyrics.map(x=>x.translation||'')));}catch(e){} renderDriveSyncDashboard();if(hasAnyTranslation()&&driveTokenValid())uploadCurrentTranslationToDrive().catch(e=>{driveSyncError=e.message;renderDriveSyncDashboard();}); }
 function restoreCachedTranslations(){let restored=false;try{const arr=JSON.parse(localStorage.getItem(cacheKey())||'null');if(Array.isArray(arr)){arr.forEach((v,i)=>{if(lyrics[i]){lyrics[i].translation=v||'';showTranslation(i);if(v)restored=true;}});}}catch(e){} return restored; }
 
 function hasAnyTranslation(){return lyrics.some(x=>String(x.translation||'').trim());}
+const DRIVE_SYNC_META='sbl_drive_sync_v113';
+let driveSyncBusy=false,driveRemoteKnown=null,driveSyncError='';
+function localTranslationKeys(){const a=[];try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('lyric_trans_')){try{const x=JSON.parse(localStorage.getItem(k)||'null');if(Array.isArray(x)&&x.some(v=>String(v||'').trim()))a.push(k);}catch(_){}}}}catch(_){}return a;}
+function driveSyncMeta(){try{return JSON.parse(localStorage.getItem(DRIVE_SYNC_META)||'{}')||{};}catch(_){return {};}}
+function setDriveSyncMeta(patch){const v={...driveSyncMeta(),...patch};localStorage.setItem(DRIVE_SYNC_META,JSON.stringify(v));renderDriveSyncDashboard();}
+function renderDriveSyncDashboard(){
+ const keys=localTranslationKeys(),meta=driveSyncMeta(),connected=driveTokenValid();
+ const local=$('driveLocalCount'),remote=$('driveRemoteCount'),pending=$('drivePendingCount'),last=$('driveLastSync'),badge=$('driveSyncBadge'),detail=$('driveVerifyDetail');if(!local)return;
+ local.textContent=String(keys.length);remote.textContent=connected&&driveRemoteKnown!==null?String(driveRemoteKnown):'—';
+ const pendingKeys=keys.filter(k=>!meta.verified?.[k]||meta.verified[k]!==localStorage.getItem(k));
+ pending.textContent='Bản dịch trên máy chưa xác minh trên Drive: '+pendingKeys.length;
+ last.textContent='Đồng bộ gần nhất: '+(meta.lastVerified?new Date(meta.lastVerified).toLocaleString('vi-VN'):'Chưa xác minh');
+ if(driveSyncBusy){badge.textContent='◌ Đang kiểm tra…';badge.style.color='#e7c96e';}
+ else if(driveSyncError){badge.textContent='● Có lỗi';badge.style.color='#ff7777';}
+ else if(!connected){badge.textContent='● Chưa kết nối';badge.style.color='#aaa';}
+ else if(meta.lastVerified&&pendingKeys.length===0){badge.textContent='✓ Đã xác minh';badge.style.color='#1ed760';}
+ else{badge.textContent='● Chưa xác minh';badge.style.color='#e7c96e';}
+ detail.textContent=driveSyncError||meta.detail||'Nhấn Kiểm tra đồng bộ để đọc dữ liệu thực tế từ Drive.';
+}
+async function driveCountFiles(){const folder=await ensureDriveFolder();let page='',count=0;do{const q=encodeURIComponent(`'${folder}' in parents and trashed=false`);const d=await driveApi('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=nextPageToken,files(id,name)&pageSize=1000'+(page?'&pageToken='+encodeURIComponent(page):''));count+=(d.files||[]).filter(f=>f.name?.endsWith('.json')).length;page=d.nextPageToken||'';}while(page);driveRemoteKnown=count;return count;}
+async function verifyDriveSync(){
+ if(!driveTokenValid()){updateDriveStatus('Chưa kết nối Drive. Hãy bấm Kết nối Drive trước.');renderDriveSyncDashboard();return;}
+ if(driveSyncBusy)return;driveSyncBusy=true;driveSyncError='';renderDriveSyncDashboard();
+ try{
+  await driveCountFiles();const meta=driveSyncMeta();const verified={...(meta.verified||{})};
+  let currentResult='Chưa có bài hát đang mở để đối chiếu nội dung.';
+  if(currentTrackKey){const f=await findDriveTranslationFile();if(f){const d=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(f.id)+'?alt=media');const local=localStorage.getItem(cacheKey());const remote=Array.isArray(d?.lyrics)?d.lyrics.map(x=>x.translation||''):null;
+    if(local&&remote&&JSON.stringify(JSON.parse(local))===JSON.stringify(remote)){verified[cacheKey()]=local;currentResult='Đã đọc lại và đối chiếu bản dịch của bài hát hiện tại: trùng khớp.';}
+    else currentResult='Đã đọc tệp trên Drive, nhưng bản dịch bài hát hiện tại chưa trùng khớp (hoặc chưa có bản dịch cục bộ).';
+   }else currentResult='Chưa tìm thấy bản dịch của bài hát hiện tại trên Drive.';}
+  setDriveSyncMeta({verified,lastVerified:new Date().toISOString(),detail:currentResult});updateDriveStatus('Đã kiểm tra danh sách tệp và đối chiếu bài hát hiện tại.');toast('Đã kiểm tra dữ liệu Google Drive.');
+ }catch(e){driveSyncError=e.message||String(e);updateDriveStatus('Kiểm tra thất bại: '+driveSyncError);toast('Không thể kiểm tra Drive: '+driveSyncError);}
+ finally{driveSyncBusy=false;renderDriveSyncDashboard();}
+}
+
 function driveTokenValid(){return !!googleDriveToken && Date.now()<googleDriveExpiresAt;}
 function updateDriveStatus(msg=''){
+  if(typeof renderDriveSyncDashboard==='function')renderDriveSyncDashboard();
   const el=$('driveStatus'); if(!el)return;
   if(msg){el.textContent=msg;return;}
   if(driveTokenValid()) el.textContent='Đã kết nối Google Drive • tự lưu bản dịch đã dịch.';
@@ -389,7 +433,7 @@ function connectGoogleDrive(){
   if(!initGoogleTokenClient()){toast('Google Identity Services chưa tải xong, hãy thử lại sau vài giây.');return;}
   googleTokenClient.requestAccessToken({prompt:'consent'});
 }
-function disconnectGoogleDrive(){googleDriveToken='';googleDriveExpiresAt=0;localStorage.removeItem(LS.gtoken);localStorage.removeItem(LS.gexp);updateDriveStatus();toast('Đã ngắt Google Drive.');}
+function disconnectGoogleDrive(){driveRemoteKnown=null;googleDriveToken='';googleDriveExpiresAt=0;localStorage.removeItem(LS.gtoken);localStorage.removeItem(LS.gexp);updateDriveStatus();toast('Đã ngắt Google Drive.');}
 async function driveApi(url,opt={}){
   if(!driveTokenValid())throw new Error('Google Drive chưa kết nối hoặc phiên đã hết hạn.');
   const headers={Authorization:'Bearer '+googleDriveToken,...(opt.headers||{})};
@@ -418,13 +462,13 @@ async function uploadMultipartDrive(meta,payload,fileId=''){
 }
 async function uploadCurrentTranslationToDrive(){
   if(!driveTokenValid()||!currentTrackKey||!hasAnyTranslation())return false;const folder=await ensureDriveFolder();const existing=await findDriveTranslationFile();
-  const meta={name:driveSafeName()};if(!existing)meta.parents=[folder];await uploadMultipartDrive(meta,currentTranslationPayload(),existing?.id||'');updateDriveStatus('Đã lưu bản dịch lên Google Drive.');return true;
+  const meta={name:driveSafeName()};if(!existing)meta.parents=[folder];await uploadMultipartDrive(meta,currentTranslationPayload(),existing?.id||'');driveSyncError='';setDriveSyncMeta({detail:'Đã tải bản dịch lên Drive; nhấn Kiểm tra đồng bộ để đọc lại xác minh.'});updateDriveStatus('Đã tải bản dịch lên Google Drive (chưa đối chiếu).');return true;
 }
 async function restoreTranslationFromDrive(){
   if(!driveTokenValid()||!currentTrackKey)return false;try{const f=await findDriveTranslationFile();if(!f)return false;const d=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(f.id)+'?alt=media');const arr=d?.lyrics;if(!Array.isArray(arr))return false;let restored=false;arr.forEach((x,i)=>{if(lyrics[i]&&x?.translation){lyrics[i].translation=x.translation;showTranslation(i);restored=true;}});if(restored){saveTranslationCache();updateDriveStatus('Đã lấy bản dịch cũ từ Google Drive.');}return restored;}catch(e){console.warn(e);return false;}
 }
 async function restoreTranslationsSmart(){const local=restoreCachedTranslations();if(local){updateDriveStatus();return true;}const drive=await restoreTranslationFromDrive();return drive;}
-async function syncDriveNow(){if(!driveTokenValid()){connectGoogleDrive();return;}if(hasAnyTranslation())await uploadCurrentTranslationToDrive();else await restoreTranslationFromDrive();toast('Đã đồng bộ bản dịch với Google Drive.');}
+async function syncDriveNow(){if(!driveTokenValid()){connectGoogleDrive();return;}if(hasAnyTranslation())await uploadCurrentTranslationToDrive();else await restoreTranslationFromDrive();await verifyDriveSync();}
 
 async function lookupWord(word){ if(!word)return;$('dictWord').textContent=word;$('dictMeaning').textContent='Đang tra…';$('dictPopup').classList.add('open');try{const out=await googleTranslate([word],$('targetLang').value);$('dictMeaning').innerHTML='Nghĩa: <b>'+esc(out[0]||'')+'</b>';}catch(e){$('dictMeaning').textContent=e.message;} }
 
@@ -649,7 +693,7 @@ function saveSettings(){spotifyClientId=$('spotifyClientId').value.trim();google
 function updateApiState(){ $('apiState').textContent=googleApiKey?'Google dịch: đã cấu hình':'Google dịch: chưa có API key'; }
 
 $('lyrics').addEventListener('click',handleLyricsClick);
-$('menuBtn').onclick=()=>{ if($('utilityDrawer').classList.contains('open')) closeUtilityDrawer(); else openUtilityDrawer(); };$('drawerSettingsBtn').onclick=()=>{ closeUtilityDrawer(); openSettings(); };$('closeUtilityDrawerBtn').onclick=closeUtilityDrawer;$('utilityOverlay').onclick=closeUtilityDrawer;$('closeSettingsBtn').onclick=closeSettings;$('saveSettingsBtn').onclick=saveSettings;$('connectDriveBtn').onclick=connectGoogleDrive;$('syncDriveBtn').onclick=()=>syncDriveNow().catch(e=>toast(e.message));$('disconnectDriveBtn').onclick=disconnectGoogleDrive;
+$('menuBtn').onclick=()=>{ if($('utilityDrawer').classList.contains('open')) closeUtilityDrawer(); else openUtilityDrawer(); };$('drawerSettingsBtn').onclick=()=>{ closeUtilityDrawer(); openSettings(); };$('closeUtilityDrawerBtn').onclick=closeUtilityDrawer;$('utilityOverlay').onclick=closeUtilityDrawer;$('closeSettingsBtn').onclick=closeSettings;$('saveSettingsBtn').onclick=saveSettings;$('connectDriveBtn').onclick=connectGoogleDrive;$('syncDriveBtn').onclick=()=>syncDriveNow().catch(e=>{driveSyncError=e.message;renderDriveSyncDashboard();toast(e.message);});$('verifyDriveBtn').onclick=verifyDriveSync;$('disconnectDriveBtn').onclick=disconnectGoogleDrive;
 $('loginBtn').onclick=()=>{if(accessToken||refreshToken){if(confirm('Bạn muốn ngắt kết nối Spotify?'))logoutSpotify();}else spotifyLogin();};
 $('translateAllBtn').onclick=translateAll;$('clearTransBtn').onclick=clearTranslations;$('refreshBtn').onclick=()=>fetchCurrentlyPlaying(true);$('closePopup').onclick=()=>$('dictPopup').classList.remove('open');
 $('targetLang').onchange=async()=>{localStorage.setItem(LS.lang,$('targetLang').value);clearTranslations();await restoreTranslationsSmart();};
