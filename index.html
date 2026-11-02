@@ -144,7 +144,9 @@ body.lyrics-mode{overflow:hidden}
         <div id="drivePendingCount">Chưa xác định dữ liệu chờ đồng bộ</div>
         <div id="driveLastSync">Đồng bộ gần nhất: Chưa có</div>
         <div id="driveVerifyDetail" style="color:#aaa">Nhấn Kiểm tra đồng bộ để đối chiếu dữ liệu thực tế.</div>
-        <button class="btn" id="verifyDriveBtn" style="margin-top:9px">🔎 Kiểm tra đồng bộ</button>
+        <div id="driveBatchProgress" style="margin-top:9px;color:#aaa" aria-live="polite">Chưa chạy đồng bộ hàng loạt.</div>
+        <progress id="driveBatchBar" max="100" value="0" style="width:100%;height:8px;accent-color:#1ed760;display:none"></progress>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px"><button class="btn primary" id="driveBatchBtn">☁️ Đồng bộ tất cả</button><button class="btn" id="driveRestoreBtn">⬇️ Tải bản còn thiếu</button><button class="btn" id="verifyDriveBtn">🔎 Kiểm tra đồng bộ</button></div>
       </div>
       <div class="drive-actions">
         <button class="btn primary" id="connectDriveBtn">Kết nối Drive</button>
@@ -377,6 +379,7 @@ function restoreCachedTranslations(){let restored=false;try{const arr=JSON.parse
 
 function hasAnyTranslation(){return lyrics.some(x=>String(x.translation||'').trim());}
 const DRIVE_SYNC_META='sbl_drive_sync_v113';
+let driveBatchRunning=false;
 let driveSyncBusy=false,driveRemoteKnown=null,driveSyncError='';
 function localTranslationKeys(){const a=[];try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('lyric_trans_')){try{const x=JSON.parse(localStorage.getItem(k)||'null');if(Array.isArray(x)&&x.some(v=>String(v||'').trim()))a.push(k);}catch(_){}}}}catch(_){}return a;}
 function driveSyncMeta(){try{return JSON.parse(localStorage.getItem(DRIVE_SYNC_META)||'{}')||{};}catch(_){return {};}}
@@ -394,6 +397,82 @@ function renderDriveSyncDashboard(){
  else if(meta.lastVerified&&pendingKeys.length===0){badge.textContent='✓ Đã xác minh';badge.style.color='#1ed760';}
  else{badge.textContent='● Chưa xác minh';badge.style.color='#e7c96e';}
  detail.textContent=driveSyncError||meta.detail||'Nhấn Kiểm tra đồng bộ để đọc dữ liệu thực tế từ Drive.';
+}
+// V11.4: read-only inventory before any upload; never overwrite a different remote translation.
+function driveFileNameForKey(key){
+ const rest=key.slice('lyric_trans_'.length),idx=rest.lastIndexOf('_');
+ if(idx<0)return null;
+ const track=rest.slice(0,idx),lang=rest.slice(idx+1);
+ if(!track||!lang)return null;
+ return track.replace(/[^a-zA-Z0-9._-]+/g,'_').slice(0,110)+'__'+lang+'.json';
+}
+async function driveListTranslationFiles(){
+ const folder=await ensureDriveFolder();let page='',all=[];
+ do{const q=encodeURIComponent(`'${folder}' in parents and trashed=false`);
+ const d=await driveApi('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=nextPageToken,files(id,name,modifiedTime)&pageSize=1000'+(page?'&pageToken='+encodeURIComponent(page):''));
+ all.push(...(d.files||[]).filter(f=>f.name?.endsWith('.json')));page=d.nextPageToken||'';
+ }while(page);
+ driveRemoteKnown=all.length;return all;
+}
+function batchProgress(done,total,uploaded,restored,skipped,failed){
+ const el=$('driveBatchProgress'),bar=$('driveBatchBar');if(!el)return;
+ el.textContent=`Đã xử lý ${done}/${total} • Tải lên: ${uploaded} • Tải về: ${restored} • Bỏ qua: ${skipped} • Lỗi: ${failed}`;
+ bar.style.display='block';bar.value=total?Math.round(done/total*100):100;
+}
+async function runDriveBatch(mode='both'){
+ if(driveBatchRunning||driveSyncBusy)return;
+ if(!driveTokenValid()){toast('Hãy kết nối Google Drive trước.');return;}
+ driveBatchRunning=true;driveSyncError='';const upBtn=$('driveBatchBtn'),downBtn=$('driveRestoreBtn');upBtn.disabled=true;downBtn.disabled=true;
+ let uploaded=0,restored=0,skipped=0,failed=0,done=0;const failures=[];
+ try{
+  const files=await driveListTranslationFiles(),byName=new Map();
+  files.forEach(f=>{if(!byName.has(f.name))byName.set(f.name,f);});
+  const keys=localTranslationKeys(),localByName=new Map();
+  for(const key of keys){const name=driveFileNameForKey(key);if(name&&!localByName.has(name))localByName.set(name,key);}
+  const jobs=[];
+  if(mode!=='download')for(const [name,key] of localByName)jobs.push({kind:'upload',name,key});
+  if(mode!=='upload')for(const f of files)if(!localByName.has(f.name))jobs.push({kind:'download',file:f});
+  batchProgress(0,jobs.length,0,0,0,0);
+  const verified={...(driveSyncMeta().verified||{})};
+  for(const job of jobs){
+   try{
+    if(job.kind==='upload'){
+     const raw=localStorage.getItem(job.key),arr=JSON.parse(raw||'null');
+     if(!Array.isArray(arr)||!arr.some(v=>String(v||'').trim())){skipped++;continue;}
+     const existing=byName.get(job.name);
+     if(existing){
+      const remote=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(existing.id)+'?alt=media');
+      const remoteArr=Array.isArray(remote?.lyrics)?remote.lyrics.map(x=>x?.translation||''):null;
+      if(remoteArr&&JSON.stringify(remoteArr)===JSON.stringify(arr)){verified[job.key]=raw;skipped++;}
+      else {skipped++;failures.push(job.name+': bản trên Drive khác bản trên máy, đã giữ nguyên cả hai.');}
+     }else{
+      const rest=job.key.slice('lyric_trans_'.length),idx=rest.lastIndexOf('_');
+      const trackKey=rest.slice(0,idx),language=rest.slice(idx+1);
+      const payload={version:2,trackKey,language,savedAt:new Date().toISOString(),lyrics:arr.map(translation=>({translation:translation||''}))};
+      const result=await uploadMultipartDrive({name:job.name,parents:[await ensureDriveFolder()]},payload);
+      // Verify actual uploaded bytes before marking this key synced.
+      const remote=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(result.id)+'?alt=media');
+      if(JSON.stringify(remote?.lyrics?.map(x=>x?.translation||''))!==JSON.stringify(arr))throw new Error('Dữ liệu đọc lại không khớp');
+      byName.set(job.name,{id:result.id,name:job.name});verified[job.key]=raw;uploaded++;
+     }
+    }else{
+     const f=job.file,remote=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(f.id)+'?alt=media');
+     const arr=remote?.lyrics?.map(x=>x?.translation||'');
+     if(!Array.isArray(arr)||!arr.some(x=>String(x).trim())||!remote?.trackKey||!remote?.language){skipped++;continue;}
+     const key='lyric_trans_'+remote.trackKey+'_'+remote.language;
+     if(localStorage.getItem(key)!==null){skipped++;continue;}
+     localStorage.setItem(key,JSON.stringify(arr));verified[key]=JSON.stringify(arr);restored++;
+    }
+   }catch(e){failed++;failures.push((job.name||job.file?.name||'Tệp')+': '+(e.message||e));}
+   finally{done++;batchProgress(done,jobs.length,uploaded,restored,skipped,failed);setDriveSyncMeta({verified});}
+  }
+  await driveCountFiles();
+  const detail=`Hoàn tất: tải lên ${uploaded}, tải về ${restored}, bỏ qua ${skipped}, lỗi ${failed}.`+(failures.length?' '+failures.slice(0,3).join(' | '):'');
+  setDriveSyncMeta({verified,lastVerified:new Date().toISOString(),detail});
+  if(failed)driveSyncError=`Có ${failed} tệp lỗi. ${failures.slice(0,2).join(' | ')}`;
+  updateDriveStatus(detail);toast(detail);
+ }catch(e){driveSyncError=e.message||String(e);toast('Đồng bộ hàng loạt thất bại: '+driveSyncError);}
+ finally{driveBatchRunning=false;upBtn.disabled=false;downBtn.disabled=false;renderDriveSyncDashboard();}
 }
 async function driveCountFiles(){const folder=await ensureDriveFolder();let page='',count=0;do{const q=encodeURIComponent(`'${folder}' in parents and trashed=false`);const d=await driveApi('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=nextPageToken,files(id,name)&pageSize=1000'+(page?'&pageToken='+encodeURIComponent(page):''));count+=(d.files||[]).filter(f=>f.name?.endsWith('.json')).length;page=d.nextPageToken||'';}while(page);driveRemoteKnown=count;return count;}
 async function verifyDriveSync(){
@@ -462,7 +541,18 @@ async function uploadMultipartDrive(meta,payload,fileId=''){
 }
 async function uploadCurrentTranslationToDrive(){
   if(!driveTokenValid()||!currentTrackKey||!hasAnyTranslation())return false;const folder=await ensureDriveFolder();const existing=await findDriveTranslationFile();
-  const meta={name:driveSafeName()};if(!existing)meta.parents=[folder];await uploadMultipartDrive(meta,currentTranslationPayload(),existing?.id||'');driveSyncError='';setDriveSyncMeta({detail:'Đã tải bản dịch lên Drive; nhấn Kiểm tra đồng bộ để đọc lại xác minh.'});updateDriveStatus('Đã tải bản dịch lên Google Drive (chưa đối chiếu).');return true;
+  const meta={name:driveSafeName()};if(!existing)meta.parents=[folder];
+  if(existing){
+    const old=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(existing.id)+'?alt=media');
+    const oldArr=Array.isArray(old?.lyrics)?old.lyrics.map(x=>x?.translation||''):null;
+    const newArr=lyrics.map(x=>x.translation||'');
+    if(JSON.stringify(oldArr)!==JSON.stringify(newArr)){
+      setDriveSyncMeta({detail:'Bản dịch trên Drive khác bản trên máy. Đã giữ nguyên cả hai, không tự ghi đè.'});
+      return false;
+    }
+    return true;
+  }
+  await uploadMultipartDrive(meta,currentTranslationPayload());driveSyncError='';setDriveSyncMeta({detail:'Đã tải bản dịch lên Drive; nhấn Kiểm tra đồng bộ để đọc lại xác minh.'});updateDriveStatus('Đã tải bản dịch lên Google Drive (chưa đối chiếu).');return true;
 }
 async function restoreTranslationFromDrive(){
   if(!driveTokenValid()||!currentTrackKey)return false;try{const f=await findDriveTranslationFile();if(!f)return false;const d=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(f.id)+'?alt=media');const arr=d?.lyrics;if(!Array.isArray(arr))return false;let restored=false;arr.forEach((x,i)=>{if(lyrics[i]&&x?.translation){lyrics[i].translation=x.translation;showTranslation(i);restored=true;}});if(restored){saveTranslationCache();updateDriveStatus('Đã lấy bản dịch cũ từ Google Drive.');}return restored;}catch(e){console.warn(e);return false;}
@@ -693,7 +783,7 @@ function saveSettings(){spotifyClientId=$('spotifyClientId').value.trim();google
 function updateApiState(){ $('apiState').textContent=googleApiKey?'Google dịch: đã cấu hình':'Google dịch: chưa có API key'; }
 
 $('lyrics').addEventListener('click',handleLyricsClick);
-$('menuBtn').onclick=()=>{ if($('utilityDrawer').classList.contains('open')) closeUtilityDrawer(); else openUtilityDrawer(); };$('drawerSettingsBtn').onclick=()=>{ closeUtilityDrawer(); openSettings(); };$('closeUtilityDrawerBtn').onclick=closeUtilityDrawer;$('utilityOverlay').onclick=closeUtilityDrawer;$('closeSettingsBtn').onclick=closeSettings;$('saveSettingsBtn').onclick=saveSettings;$('connectDriveBtn').onclick=connectGoogleDrive;$('syncDriveBtn').onclick=()=>syncDriveNow().catch(e=>{driveSyncError=e.message;renderDriveSyncDashboard();toast(e.message);});$('verifyDriveBtn').onclick=verifyDriveSync;$('disconnectDriveBtn').onclick=disconnectGoogleDrive;
+$('menuBtn').onclick=()=>{ if($('utilityDrawer').classList.contains('open')) closeUtilityDrawer(); else openUtilityDrawer(); };$('drawerSettingsBtn').onclick=()=>{ closeUtilityDrawer(); openSettings(); };$('closeUtilityDrawerBtn').onclick=closeUtilityDrawer;$('utilityOverlay').onclick=closeUtilityDrawer;$('closeSettingsBtn').onclick=closeSettings;$('saveSettingsBtn').onclick=saveSettings;$('connectDriveBtn').onclick=connectGoogleDrive;$('syncDriveBtn').onclick=()=>syncDriveNow().catch(e=>{driveSyncError=e.message;renderDriveSyncDashboard();toast(e.message);});$('verifyDriveBtn').onclick=verifyDriveSync;$('driveBatchBtn').onclick=()=>runDriveBatch('both');$('driveRestoreBtn').onclick=()=>runDriveBatch('download');$('disconnectDriveBtn').onclick=disconnectGoogleDrive;
 $('loginBtn').onclick=()=>{if(accessToken||refreshToken){if(confirm('Bạn muốn ngắt kết nối Spotify?'))logoutSpotify();}else spotifyLogin();};
 $('translateAllBtn').onclick=translateAll;$('clearTransBtn').onclick=clearTranslations;$('refreshBtn').onclick=()=>fetchCurrentlyPlaying(true);$('closePopup').onclick=()=>$('dictPopup').classList.remove('open');
 $('targetLang').onchange=async()=>{localStorage.setItem(LS.lang,$('targetLang').value);clearTranslations();await restoreTranslationsSmart();};
