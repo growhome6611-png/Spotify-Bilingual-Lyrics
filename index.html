@@ -119,6 +119,13 @@ header{min-height:48px;padding:7px 12px;gap:8px}
 @keyframes quick-pulse{50%{opacity:.45}}
 .player-bottom{display:block}.player-bottom .player-right{display:none}
 @media(max-width:640px){.player-shell{padding-bottom:8px}.player-bottom{margin-top:7px}.quick-player-toolbar{gap:3px!important}}
+
+/* V11.8: maximize lyrics space; hide top banner and three redundant shortcuts. */
+body > header{display:none!important}
+#quickLang, .quick-lang-wrap, #quickSyncBtn, #quickDriveBtn{display:none!important}
+.quick-player-toolbar{justify-content:flex-end!important;gap:10px!important}
+.quick-player-toolbar .player-icon-btn,.quick-player-toolbar .source-icon-btn{flex:0 0 auto!important}
+@media(max-width:640px){.app{padding-top:4px!important}.player-shell{margin-top:0!important}}
 </style>
 </head>
 <body>
@@ -276,6 +283,7 @@ header{min-height:48px;padding:7px 12px;gap:8px}
 
 <div class="modal" id="settingsModal"><div class="dialog">
   <h3>⚙️ Cài đặt</h3>
+  <div class="field"><button class="btn" id="settingsSpotifyBtn" type="button">🎵 Kết nối / Ngắt Spotify</button><span class="hint">Quản lý kết nối Spotify sau khi ẩn thanh tiêu đề.</span></div>
   <div class="field"><label>Spotify Client ID</label><input id="spotifyClientId" placeholder="Dán Client ID của Spotify Developer App" /></div>
   <div class="field"><label>Google Cloud Translation API Key</label><input id="googleApiKey" type="password" placeholder="Dán Google Translate API Key" /></div>
   <div class="field"><label>Google OAuth Client ID (Web)</label><input id="googleClientId" placeholder="xxxx.apps.googleusercontent.com" /></div>
@@ -861,6 +869,7 @@ $('quickLang').value=$('targetLang').value;
 $('quickLang').onchange=()=>{$('targetLang').value=$('quickLang').value;$('targetLang').dispatchEvent(new Event('change'));toast('Ngôn ngữ dịch: '+$('quickLang').selectedOptions[0]?.textContent);};
 $('quickTranslateBtn').onclick=()=>{if(!lyrics.length){toast('Hãy mở một bài hát có lời trước khi dịch.');return;}translateAll();};
 $('quickSettingsBtn').onclick=()=>{closeUtilityDrawer();openSettings();};
+$('settingsSpotifyBtn').onclick=()=>{$('loginBtn').click();};
 $('quickSyncBtn').onclick=()=>{if(!driveTokenValid()){toast('Hãy kết nối Google Drive trước.');connectGoogleDrive();return;}runDriveBatch('both').catch(e=>toast(e.message));};
 $('quickDriveBtn').onclick=()=>{if(driveTokenValid()){verifyDriveSync().catch(e=>toast(e.message));toast('Đang kiểm tra dữ liệu Google Drive...');}else connectGoogleDrive();};
 const quickSyncObserver=new MutationObserver(updateQuickToolbar);
