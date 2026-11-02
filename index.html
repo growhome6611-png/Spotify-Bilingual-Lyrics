@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<title>Spotify Bilingual Lyrics V8.1</title>
+<title>Spotify Bilingual Lyrics V11.9</title>
 <style>
 :root{--bg:#121212;--surface:#181818;--surface2:#242424;--border:#333;--green:#1ed760;--green2:#1db954;--text:#fff;--muted:#b3b3b3;--trans:#b8f5ca;--danger:#ff6b6b}
 *{box-sizing:border-box}html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
@@ -126,6 +126,19 @@ body > header{display:none!important}
 .quick-player-toolbar{justify-content:flex-end!important;gap:10px!important}
 .quick-player-toolbar .player-icon-btn,.quick-player-toolbar .source-icon-btn{flex:0 0 auto!important}
 @media(max-width:640px){.app{padding-top:4px!important}.player-shell{margin-top:0!important}}
+
+/* V11.9: independently scrolling settings dialog, safe-area footer and restored Drive controls */
+#settingsModal{z-index:310;padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));align-items:center;overscroll-behavior:contain}
+#settingsModal .dialog{display:flex;flex-direction:column;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;width:min(560px,100%);max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px);padding:18px 16px 0;scrollbar-width:thin}
+#settingsModal .dialog-actions{position:sticky;bottom:0;z-index:2;background:#181818;border-top:1px solid #353535;padding:12px 0 max(12px,env(safe-area-inset-bottom));margin-top:18px;flex-shrink:0}
+#settingsModal .dialog-actions .btn{min-height:44px}
+#settingsModal .settings-drive-section{border-top:1px solid #343434;margin-top:18px;padding-top:16px}
+#settingsModal .settings-drive-section h3{margin:0 0 8px}
+#settingsModal .settings-drive-section .drive-box{width:100%;max-width:100%;margin:10px 0;box-sizing:border-box}
+#settingsModal .settings-drive-section button{white-space:normal}
+#settingsModal .field input{min-width:0}
+#settingsModal .hint,#settingsModal code{overflow-wrap:anywhere;word-break:break-word}
+@media(max-width:640px){#settingsModal{padding:8px 8px max(8px,env(safe-area-inset-bottom))}#settingsModal .dialog{max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 16px);border-radius:14px;padding:16px 14px 0}#settingsModal .dialog-actions{padding-bottom:max(12px,env(safe-area-inset-bottom))}}
 </style>
 </head>
 <body>
@@ -189,25 +202,6 @@ body > header{display:none!important}
       <button class="btn" id="refreshBtn">↻ Làm mới</button>
       <span class="spacer"></span><span class="mini-status" id="apiState"></span>
     </section>
-    <div class="drive-box">
-      <div class="drive-title">☁️ Google Drive Sync</div>
-      <div class="drive-status" id="driveStatus">Chưa cấu hình Google Drive.</div>
-      <div id="driveSyncDashboard" style="margin:12px 0;padding:12px;border:1px solid #363636;border-radius:13px;background:#121212;font-size:13px;line-height:1.8">
-        <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><strong>Trạng thái sao lưu</strong><strong id="driveSyncBadge" style="color:#aaa">● Chưa kiểm tra</strong></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:9px 0"><div>Bản dịch trên máy<br><strong id="driveLocalCount" style="font-size:20px">—</strong></div><div>Tệp trên Drive<br><strong id="driveRemoteCount" style="font-size:20px">—</strong></div></div>
-        <div id="drivePendingCount">Chưa xác định dữ liệu chờ đồng bộ</div>
-        <div id="driveLastSync">Đồng bộ gần nhất: Chưa có</div>
-        <div id="driveVerifyDetail" style="color:#aaa">Nhấn Kiểm tra đồng bộ để đối chiếu dữ liệu thực tế.</div>
-        <div id="driveBatchProgress" style="margin-top:9px;color:#aaa" aria-live="polite">Chưa chạy đồng bộ hàng loạt.</div>
-        <progress id="driveBatchBar" max="100" value="0" style="width:100%;height:8px;accent-color:#1ed760;display:none"></progress>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px"><button class="btn primary" id="driveBatchBtn">☁️ Đồng bộ tất cả</button><button class="btn" id="driveRestoreBtn">⬇️ Tải bản còn thiếu</button><button class="btn" id="verifyDriveBtn">🔎 Kiểm tra đồng bộ</button></div>
-      </div>
-      <div class="drive-actions">
-        <button class="btn primary" id="connectDriveBtn">Kết nối Drive</button>
-        <button class="btn" id="syncDriveBtn">Đồng bộ ngay</button>
-        <button class="btn" id="disconnectDriveBtn">Ngắt Drive</button>
-      </div>
-    </div>
     <div class="utility-hint">Bản dịch được ưu tiên lấy theo thứ tự: bộ nhớ máy → Google Drive → Google Translate API.</div>
   </section>
   <div class="source-overlay" id="sourceOverlay"></div>
@@ -289,6 +283,26 @@ body > header{display:none!important}
   <div class="field"><label>Google OAuth Client ID (Web)</label><input id="googleClientId" placeholder="xxxx.apps.googleusercontent.com" /></div>
   <div class="field"><label>Ngôn ngữ dịch mặc định</label><select id="defaultLang"><option value="vi">Tiếng Việt</option><option value="zh-CN">中文</option><option value="en">English</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="es">Español</option><option value="th">ไทย</option></select></div>
   <div class="hint">Spotify Redirect URI cần thêm chính xác vào Spotify Developer Dashboard:<br><code id="redirectHint"></code><br><br>Ứng dụng dùng OAuth PKCE, không cần Client Secret. Bản V5 có trình phát và màn hình lời toàn màn hình; vẫn cần quyền streaming + điều khiển phát nhạc. Sau khi cập nhật, hãy ngắt kết nối và kết nối Spotify lại một lần. Trình phát Web Playback SDK yêu cầu Spotify Premium. Google Drive dùng OAuth Web Client ID và scope drive.file; API key Google được lưu trong trình duyệt của thiết bị này; khi triển khai công khai nên giới hạn key theo HTTP referrer/domain.</div>
+  <div class="settings-drive-section"><h3>☁️ Google Drive Sync</h3><p class="hint">Kết nối, kiểm tra và đồng bộ bản dịch trên các thiết bị.</p>    <div class="drive-box">
+      <div class="drive-title">☁️ Google Drive Sync</div>
+      <div class="drive-status" id="driveStatus">Chưa cấu hình Google Drive.</div>
+      <div id="driveSyncDashboard" style="margin:12px 0;padding:12px;border:1px solid #363636;border-radius:13px;background:#121212;font-size:13px;line-height:1.8">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><strong>Trạng thái sao lưu</strong><strong id="driveSyncBadge" style="color:#aaa">● Chưa kiểm tra</strong></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:9px 0"><div>Bản dịch trên máy<br><strong id="driveLocalCount" style="font-size:20px">—</strong></div><div>Tệp trên Drive<br><strong id="driveRemoteCount" style="font-size:20px">—</strong></div></div>
+        <div id="drivePendingCount">Chưa xác định dữ liệu chờ đồng bộ</div>
+        <div id="driveLastSync">Đồng bộ gần nhất: Chưa có</div>
+        <div id="driveVerifyDetail" style="color:#aaa">Nhấn Kiểm tra đồng bộ để đối chiếu dữ liệu thực tế.</div>
+        <div id="driveBatchProgress" style="margin-top:9px;color:#aaa" aria-live="polite">Chưa chạy đồng bộ hàng loạt.</div>
+        <progress id="driveBatchBar" max="100" value="0" style="width:100%;height:8px;accent-color:#1ed760;display:none"></progress>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px"><button class="btn primary" id="driveBatchBtn">☁️ Đồng bộ tất cả</button><button class="btn" id="driveRestoreBtn">⬇️ Tải bản còn thiếu</button><button class="btn" id="verifyDriveBtn">🔎 Kiểm tra đồng bộ</button></div>
+      </div>
+      <div class="drive-actions">
+        <button class="btn primary" id="connectDriveBtn">Kết nối Drive</button>
+        <button class="btn" id="syncDriveBtn">Đồng bộ ngay</button>
+        <button class="btn" id="disconnectDriveBtn">Ngắt Drive</button>
+      </div>
+    </div>
+  </div>
   <div class="dialog-actions"><button class="btn primary" id="saveSettingsBtn">Lưu</button><button class="btn" id="closeSettingsBtn">Đóng</button></div>
 </div></div>
 
@@ -831,7 +845,7 @@ function renderPicker(){const box=$('playlistPickerList');box.innerHTML=playlist
 async function addTrackToPlaylist(id,t){const uri=t.uri||('spotify:track:'+t.id);await spotifyApi('/playlists/'+encodeURIComponent(id)+'/items',{method:'POST',body:{uris:[uri]}});toast('Đã thêm vào bộ sưu tập.');}
 function closePicker(){$('playlistPickerModal').classList.remove('open');pickerTrack=null;}
 
-function openSettings(){ $('spotifyClientId').value=spotifyClientId;$('googleApiKey').value=googleApiKey;$('googleClientId').value=googleClientId;$('defaultLang').value=localStorage.getItem(LS.lang)||$('targetLang').value;$('redirectHint').textContent=redirectUri();$('settingsModal').classList.add('open'); }
+function openSettings(){ $('spotifyClientId').value=spotifyClientId;$('googleApiKey').value=googleApiKey;$('googleClientId').value=googleClientId;$('defaultLang').value=localStorage.getItem(LS.lang)||$('targetLang').value;$('redirectHint').textContent=redirectUri();$('settingsModal').classList.add('open'); renderDriveSyncDashboard(); updateDriveStatus(); }
 function closeSettings(){ $('settingsModal').classList.remove('open'); }
 function openUtilityDrawer(){ $('utilityDrawer').classList.add('open'); $('utilityDrawer').setAttribute('aria-hidden','false'); $('utilityOverlay').classList.add('open'); }
 function closeUtilityDrawer(){ $('utilityDrawer').classList.remove('open'); $('utilityDrawer').setAttribute('aria-hidden','true'); $('utilityOverlay').classList.remove('open'); }
