@@ -144,6 +144,24 @@ body > header{display:none!important}
 #settingsModal .field input{min-width:0}
 #settingsModal .hint,#settingsModal code{overflow-wrap:anywhere;word-break:break-word}
 @media(max-width:640px){#settingsModal{padding:8px 8px max(8px,env(safe-area-inset-bottom))}#settingsModal .dialog{max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 16px);border-radius:14px;padding:16px 14px 0}#settingsModal .dialog-actions{padding-bottom:max(12px,env(safe-area-inset-bottom))}}
+
+/* V11.11: one shared font scale for original lyrics and translations, both views */
+:root{--lyric-scale:1}
+#lyrics .original{font-size:calc(1.22rem * var(--lyric-scale))!important}
+#lyrics .line.active .original{font-size:calc(1.34rem * var(--lyric-scale))!important}
+#lyrics .translation{font-size:calc(1rem * var(--lyric-scale))!important}
+.full-line{font-size:calc(2rem * var(--lyric-scale))!important}
+.full-line .full-translation{font-size:calc(1.05rem * var(--lyric-scale))!important}
+@media(max-width:640px){#lyrics .original{font-size:calc(1.08rem * var(--lyric-scale))!important}#lyrics .line.active .original{font-size:calc(1.16rem * var(--lyric-scale))!important}.full-line{font-size:calc(1.72rem * var(--lyric-scale))!important}.full-line .full-translation{font-size:calc(.98rem * var(--lyric-scale))!important}}
+@media(min-width:641px){.full-line{font-size:calc(2.35rem * var(--lyric-scale))!important}}
+.quick-player-toolbar{justify-content:space-between!important;gap:clamp(2px,.7vw,8px)!important}
+.quick-player-toolbar .player-icon-btn,.quick-player-toolbar .source-icon-btn{width:clamp(29px,7.6vw,39px)!important;height:clamp(29px,7.6vw,39px)!important}
+.quick-player-toolbar .font-adjust{font-size:.78rem!important;font-weight:850;letter-spacing:-.07em}
+#likeCurrentBtn[aria-pressed="true"]{color:#1ed760;border-color:#1ed760;font-size:1.35rem!important}
+.full-font-controls{position:absolute;z-index:6;left:16px;top:max(68px,calc(env(safe-area-inset-top) + 62px));display:flex;align-items:center;gap:5px;background:rgba(0,0,0,.25);border-radius:999px;padding:4px 6px;backdrop-filter:blur(8px)}
+.full-font-controls button{border:0;background:rgba(255,255,255,.13);color:white;border-radius:50%;width:34px;height:34px;font-size:.85rem;font-weight:800;cursor:pointer}
+.full-font-controls span{font-size:.7rem;min-width:35px;text-align:center}
+@media(max-width:640px){.quick-player-toolbar{gap:2px!important}.full-font-controls{left:10px;top:max(74px,calc(env(safe-area-inset-top) + 70px))}}
 </style>
 </head>
 <body>
@@ -176,6 +194,9 @@ body > header{display:none!important}
     <div class="progress-row"><span id="elapsedText">0:00</span><input class="range" id="seekRange" type="range" min="0" max="1000" value="0" disabled><span id="durationText">0:00</span></div>
     <div class="player-bottom">
       <div class="player-left quick-player-toolbar" role="toolbar" aria-label="Công cụ nhanh cho bài hát">
+        <button class="player-icon-btn font-adjust" id="fontDownBtn" title="Giảm cỡ chữ cả lời gốc và bản dịch" aria-label="Giảm cỡ chữ">A−</button>
+        <button class="player-icon-btn font-adjust" id="fontUpBtn" title="Tăng cỡ chữ cả lời gốc và bản dịch" aria-label="Tăng cỡ chữ">A+</button>
+        <button class="player-icon-btn" id="likeCurrentBtn" title="Thêm bài hát vào Liked Songs Spotify" aria-label="Yêu thích bài hát" aria-pressed="false">♡</button>
         <button class="player-icon-btn" id="quickTranslateBtn" title="Dịch toàn bài" aria-label="Dịch toàn bài">🌐</button>
         <label class="quick-lang-wrap" title="Chọn ngôn ngữ dịch"><span aria-hidden="true">🌍</span><select id="quickLang" aria-label="Chọn ngôn ngữ dịch"></select></label>
         <button class="player-icon-btn" id="quickSyncBtn" title="Đồng bộ tất cả bản dịch với Google Drive" aria-label="Đồng bộ tất cả bản dịch">☁️</button>
@@ -270,6 +291,7 @@ body > header{display:none!important}
     <div class="lyrics-head-title"><div class="lyrics-song" id="fullLyricsSong">Bài hát</div><div class="lyrics-artist" id="fullLyricsArtist">Nghệ sĩ</div></div>
     <button class="lyrics-more" id="lyricsMoreBtn" aria-label="Tùy chọn">⋮</button>
   </div>
+  <div class="full-font-controls" role="group" aria-label="Cỡ chữ lời gốc và bản dịch"><button id="fullFontDownBtn" aria-label="Giảm cỡ chữ">A−</button><span id="fontSizeLabelFull">100%</span><button id="fullFontUpBtn" aria-label="Tăng cỡ chữ">A+</button></div>
   <button class="lyrics-translate-chip" id="fullTranslateBtn">🌐 Dịch</button>
   <div class="lyrics-scroll" id="fullLyricsScroll"><div class="empty" style="color:rgba(255,255,255,.72)">Chưa có lời bài hát.</div></div>
   <div class="lyrics-bottom">
@@ -388,7 +410,7 @@ async function fetchCurrentlyPlaying(force=false){
     const name=d.item.name||'', artist=(d.item.artists||[]).map(a=>a.name).join(', '), id=d.item.id||d.item.uri, album=d.item.album?.name||'', cover=d.item.album?.images?.[1]?.url||d.item.album?.images?.[0]?.url||'';
     $('trackTitle').textContent=name;$('trackArtist').textContent=artist+(album?' • '+album:'');if(cover)$('cover').src=cover;$('playerTitle').textContent=name;$('playerArtist').textContent=artist;if(cover)$('playerCover').src=cover;updateFullLyricsMeta();
     isPlaying=!!d.is_playing;progressAnchorMs=d.progress_ms||0;progressAnchorAt=Date.now();
-    if(force||id!==lastTrackId){ lastTrackId=id; currentTrackKey=id||name+'|'+artist; await fetchLyrics(name,artist,album,d.item.duration_ms||0); }
+    if(force||id!==lastTrackId){ lastTrackId=id; refreshLikeState(d.item.id); currentTrackKey=id||name+'|'+artist; await fetchLyrics(name,artist,album,d.item.duration_ms||0); }
     syncLyrics(getEstimatedProgress()/1000);
   }catch(e){ console.error(e);$('syncStatus').textContent='[Lỗi kết nối Spotify]'; }
 }
@@ -899,6 +921,29 @@ updateQuickToolbar();
 $('activatePlayerBtn').onclick=()=>activateWebPlayer().catch(e=>toast(e.message));
 $('playPauseBtn').onclick=togglePlayPause;$('prevBtn').onclick=previousTrack;$('nextBtn').onclick=nextTrack;
 $('seekRange').addEventListener('change',seekPlayer);$('volumeRange').addEventListener('input',setPlayerVolume);
+
+
+// V11.11: one persisted scale applies to BOTH original lyrics and translated lyrics.
+const FONT_KEY='spotify_bilingual_joint_lyric_font_scale';
+let lyricFontScale=Math.max(.75,Math.min(1.7,Number(localStorage.getItem(FONT_KEY))||1));
+function applyJointLyricFontScale(){
+ document.documentElement.style.setProperty('--lyric-scale',String(lyricFontScale));
+ const pct=Math.round(lyricFontScale*100)+'%';
+ if($('fontSizeLabelFull'))$('fontSizeLabelFull').textContent=pct;
+ for(const id of ['fontDownBtn','fontUpBtn','fullFontDownBtn','fullFontUpBtn']){const el=$(id);if(!el)continue;el.disabled=id.toLowerCase().includes('down')?lyricFontScale<=.75:lyricFontScale>=1.7;}
+}
+function changeJointLyricFontScale(delta){lyricFontScale=Math.max(.75,Math.min(1.7,Math.round((lyricFontScale+delta)*100)/100));localStorage.setItem(FONT_KEY,String(lyricFontScale));applyJointLyricFontScale();}
+$('fontDownBtn').onclick=()=>changeJointLyricFontScale(-.1);
+$('fontUpBtn').onclick=()=>changeJointLyricFontScale(.1);
+$('fullFontDownBtn').onclick=()=>changeJointLyricFontScale(-.1);
+$('fullFontUpBtn').onclick=()=>changeJointLyricFontScale(.1);
+applyJointLyricFontScale();
+
+// Like/Unlike current Spotify track; state is read from Spotify when available.
+let likedTrackId='',likedTrackState=false,likedCheckSeq=0;
+function updateLikeButton(){const b=$('likeCurrentBtn');if(!b)return;b.textContent=likedTrackState?'♥':'♡';b.setAttribute('aria-pressed',String(likedTrackState));b.title=likedTrackState?'Bỏ khỏi Liked Songs':'Thêm vào Liked Songs';}
+async function refreshLikeState(id){const seq=++likedCheckSeq;likedTrackId=id||'';likedTrackState=false;updateLikeButton();if(!id||!accessToken)return;try{const d=await spotifyApi('/me/library/contains?uris='+encodeURIComponent('spotify:track:'+id));if(seq!==likedCheckSeq)return;likedTrackState=Array.isArray(d)?!!d[0]:!!(d?.[0]??d?.contains?.[0]);updateLikeButton();}catch(e){console.warn('Không thể kiểm tra yêu thích:',e.message);}}
+$('likeCurrentBtn').onclick=async()=>{const id=lastTrackId||currentTrackKey;if(!id||!(/^[A-Za-z0-9]{22}$/.test(id))){toast('Hãy mở một bài hát Spotify trước.');return;}const b=$('likeCurrentBtn');b.disabled=true;try{const uri='spotify:track:'+id;await spotifyApi('/me/library?uris='+encodeURIComponent(uri),{method:likedTrackState?'DELETE':'PUT'});likedTrackId=id;likedTrackState=!likedTrackState;updateLikeButton();toast(likedTrackState?'Đã thêm vào Liked Songs':'Đã bỏ khỏi Liked Songs');}catch(e){toast('Không cập nhật được yêu thích: '+e.message);}finally{b.disabled=false;}};
 
 async function init(){
   const lang=localStorage.getItem(LS.lang)||'vi';$('targetLang').value=lang;$('quickLang').value=lang;$('defaultLang').value=lang;$('redirectHint').textContent=redirectUri();updateApiState();updateDriveStatus();setTimeout(()=>{initGoogleTokenClient();updateDriveStatus();},600);
