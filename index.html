@@ -437,8 +437,22 @@ function applyManualContent(content,offset=0){
  $('syncStatus').textContent=hasTimes?'[LRC cá nhân • đồng bộ]':'[TXT cá nhân • lời tĩnh]';
  return hasTimes;
 }
+// V11.12: keep the exact lyric text previously retrieved, separately from translations.
+function lyricSourceCacheKey(){return 'lyric_source_v1112_'+currentTrackKey;}
+function storeLyricSource(hit){
+ try{if(!currentTrackKey)return;const obj={trackName:hit.trackName||'',artistName:hit.artistName||'',syncedLyrics:hit.syncedLyrics||'',plainLyrics:hit.plainLyrics||'',savedAt:Date.now()};if(obj.syncedLyrics||obj.plainLyrics)localStorage.setItem(lyricSourceCacheKey(),JSON.stringify(obj));}catch(e){console.warn('Lyric cache write:',e);}
+}
+function restoreLyricSource(){
+ try{const hit=JSON.parse(localStorage.getItem(lyricSourceCacheKey())||'null');if(!hit)return false;
+ storeLyricSource(hit);
+ if(hit.syncedLyrics){parseLrc(hit.syncedLyrics);$('syncStatus').textContent='[Lời đồng bộ • đã lưu trên máy]';return true;}
+ if(hit.plainLyrics){parsePlain(hit.plainLyrics);$('syncStatus').textContent='[Lời tĩnh • đã lưu trên máy]';return true;}
+ }catch(e){console.warn('Lyric cache read:',e);}return false;
+}
 async function fetchLyrics(track,artist,album,durationMs){
  const saved=manualSaved();if(saved?.text){try{applyManualContent(saved.text,saved.offset);await restoreTranslationsSmart();return;}catch(e){console.warn(e);}}
+ // Prefer already retrieved lyrics: LRCLIB can temporarily fail or omit a result.
+ if(restoreLyricSource()){await restoreTranslationsSmart();return;}
 
  $('syncStatus').textContent='[Đang tìm lời...]'; $('lyrics').innerHTML='<div class="empty">Đang tìm lời bài hát…</div>'; lyrics=[];activeIndex=-1;$('translateAllBtn').disabled=true;$('clearTransBtn').disabled=true;
  const candidates=[];const seen=new Set();const add=v=>{for(const x of Array.isArray(v)?v:[v]){if(!x||(!x.syncedLyrics&&!x.plainLyrics))continue;const k=x.id||x.trackName+'|'+x.artistName+'|'+x.duration;if(!seen.has(k)){seen.add(k);candidates.push(x);}}};
@@ -446,6 +460,8 @@ async function fetchLyrics(track,artist,album,durationMs){
  const exact=new URL('https://lrclib.net/api/get');exact.searchParams.set('track_name',track);exact.searchParams.set('artist_name',artist);if(album)exact.searchParams.set('album_name',album);if(durationMs)exact.searchParams.set('duration',String(Math.round(durationMs/1000)));
  add(await lyricRequest(exact));await search(track,artist);
  const clean=lyricName(track);if(clean&&clean!==track)await search(clean,artist);
+ // Also try the broad query even when narrow results exist but match poorly.
+ {const u=new URL('https://lrclib.net/api/search');u.searchParams.set('q',(clean||track)+' '+artist.split(',')[0]);add(await lyricRequest(u));}
  if(!candidates.length){const u=new URL('https://lrclib.net/api/search');u.searchParams.set('q',clean||track);add(await lyricRequest(u));}
  const ranked=candidates.map(x=>({x,score:lyricMatch(x,track,artist,durationMs)})).sort((a,b)=>b.score-a.score);
  const hit=ranked[0]?.score>=65?ranked[0].x:null;
