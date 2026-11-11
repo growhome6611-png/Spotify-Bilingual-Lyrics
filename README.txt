@@ -1,3 +1,14 @@
+BẢN V13 — SPOTIFY BILINGUAL (KHÔNG YOUTUBE / BÀI TẬP)
+
+- Đã gỡ toàn bộ tính năng kết nối YouTube, trang YouTube, quyền youtube.readonly và trình phát YouTube.
+- Đã gỡ toàn bộ bài tập lời bài hát: nút 🎓, hộp luyện tập, tạo câu hỏi, lưu/đồng bộ bài tập và phần Gemini riêng cho bài tập.
+- Giữ nguyên Spotify Player, tìm kiếm và thư viện nhạc, đồng bộ lời bài hát, tra từ, dịch, đồng bộ bản dịch Google Drive.
+- Mã nguồn đã loại bỏ xử lý bài tập và YouTube; không xóa dữ liệu bản dịch của người dùng trong localStorage/Drive.
+- Cập nhật cache PWA thành phiên bản v13 để thay thế giao diện cũ.
+
+CÀI ĐẶT: tải ZIP về, giải nén rồi đưa các file trong thư mục Spotify-Bilingual-Lyrics-main lên repository GitHub/Vercel đang dùng; chọn ghi đè các file cũ. Sau khi deploy, đóng/mở lại PWA; nếu còn cache cũ, mở Chrome để tải lại trang mới.
+
+--- THÔNG TIN BẢN TRƯỚC ---
 Spotify Bilingual Lyrics V5
 
 Nang cap:

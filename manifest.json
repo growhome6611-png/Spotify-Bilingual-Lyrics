@@ -1,7 +1,7 @@
 {
   "name": "Spotify Bilingual Lyrics V5",
   "short_name": "Bilingual Lyrics",
-  "description": "Theo dõi bài hát đang phát trên Spotify, hiển thị lời đồng bộ và dịch song ngữ.",
+  "description": "Spotify Bilingual Lyrics: nghe Spotify, hiển thị lời đồng bộ, dịch song ngữ và đồng bộ Google Drive.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -9,7 +9,17 @@
   "theme_color": "#121212",
   "orientation": "portrait-primary",
   "icons": [
-    {"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
-    {"src":"./icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
   ]
 }
