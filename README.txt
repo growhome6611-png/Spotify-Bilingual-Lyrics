@@ -35,3 +35,9 @@ V11.13 - LUYEN TAP QUA LOI BAI HAT
 - Khong thay doi du lieu loi bai hat va ban dich hien co.
 
 V11.15: Playback controls now target active Spotify Connect device via Web API; fixes idle Web SDK no-list-loaded error.
+
+V12 YouTube OAuth diagnostic update (2026-11-12):
+- YouTube connect now reports missing/invalid OAuth Client ID, blocked popup, cancelled popup, missing Google Identity Services and timeout.
+- The connection button reflects token state; Spotify, exercises and Drive code preserved.
+- OAuth YouTube readonly scope may require Google verification in Production. For private testing, use Google Auth Platform > Audience > Testing and add your Google account as a test user, then retry.
+- YouTube Data API v3 must be enabled; authorized JavaScript origin must match the deployed HTTPS origin exactly.

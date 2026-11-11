@@ -1109,16 +1109,55 @@ const ytState={token:'',expires:0,client:null,tab:'subscriptions',next:'',query:
 function ytStatus(t){$('ytStatus').textContent=t;}
 function ytEscape(t){return esc(String(t??''));}
 function ytTokenValid(){return !!ytState.token&&Date.now()<ytState.expires;}
-function ytInit(){if(ytTokenValid())ytStatus('Đã kết nối YouTube. Chọn Kênh đã đăng ký hoặc Video mới.');else ytStatus('Chưa kết nối YouTube. Nhấn Kết nối YouTube để cấp quyền chỉ đọc danh sách kênh.');if(ytTokenValid()&&!ytState.items.length)ytLoadSubscriptions();}
+function ytUpdateConnectionUI(){
+ const btn=$('ytConnect');if(!btn)return;
+ btn.textContent=ytTokenValid()?'✓ YouTube đã kết nối':'Kết nối YouTube';
+ btn.setAttribute('aria-label',ytTokenValid()?'Kết nối lại YouTube':'Kết nối YouTube');
+ btn.style.borderColor=ytTokenValid()?'#1ed760':'';
+}
+function ytInit(){
+ ytUpdateConnectionUI();
+ if(ytTokenValid())ytStatus('✓ Đã kết nối YouTube. Chọn Kênh đã đăng ký hoặc Video mới.');
+ else ytStatus('Chưa kết nối YouTube. Nhấn Kết nối YouTube để đăng nhập. Nếu bị chặn, ứng dụng sẽ hiển thị nguyên nhân.');
+ if(ytTokenValid()&&!ytState.items.length)ytLoadSubscriptions();
+}
+let ytAuthPending=false,ytAuthWatchdog=null;
+function ytAuthFinish(message){
+ ytAuthPending=false;clearTimeout(ytAuthWatchdog);ytAuthWatchdog=null;
+ $('ytConnect').disabled=false;ytUpdateConnectionUI();
+ if(message)ytStatus(message);
+}
 function ytConnect(){
- const id=googleClientId||localStorage.getItem(LS.gclient)||'';
- if(!id){ytStatus('Chưa có Google OAuth Client ID (Web). Vào Cài đặt để nhập và lưu Client ID trước.');openSettings();return;}
- if(!window.google?.accounts?.oauth2){ytStatus('Không tải được Google Identity Services. Kiểm tra mạng rồi thử lại.');return;}
- ytState.client=google.accounts.oauth2.initTokenClient({client_id:id,scope:'https://www.googleapis.com/auth/youtube.readonly',callback:r=>{
-  if(r.error||!r.access_token){ytStatus('Kết nối YouTube thất bại: '+(r.error||'Không có access token'));return;}
-  ytState.token=r.access_token;ytState.expires=Date.now()+(Math.max(60,(r.expires_in||3600)-60))*1000;
-  ytStatus('Đã kết nối YouTube. Đang tải các kênh đã đăng ký…');ytLoadSubscriptions();
- }});ytState.client.requestAccessToken({prompt:'consent'});
+ if(ytAuthPending){ytStatus('Đang chờ Google xác thực. Hãy kiểm tra cửa sổ đăng nhập hoặc thử lại sau ít giây.');return;}
+ const id=(googleClientId||localStorage.getItem(LS.gclient)||'').trim();
+ if(!id){ytStatus('Chưa có Google OAuth Client ID (Web). Vào Cài đặt để nhập và lưu.');openSettings();return;}
+ if(!/^[0-9]+-[a-zA-Z0-9_-]+\.apps\.googleusercontent\.com$/.test(id)){
+  ytStatus('Google OAuth Client ID không đúng định dạng. Hãy dùng đầy đủ ID kết thúc bằng .apps.googleusercontent.com trong Cài đặt.');return;
+ }
+ if(!window.isSecureContext){ytStatus('Google OAuth cần HTTPS. Hãy mở ứng dụng qua địa chỉ Vercel HTTPS.');return;}
+ if(!window.google?.accounts?.oauth2){ytStatus('Không tải được thư viện Google Identity Services. Kiểm tra mạng, chặn quảng cáo và thử mở trực tiếp bằng Chrome.');return;}
+ ytAuthPending=true;$('ytConnect').disabled=true;
+ ytStatus('Đang yêu cầu Google mở cửa sổ đăng nhập… Nếu không thấy cửa sổ, hãy kiểm tra chặn pop-up của trình duyệt.');
+ ytAuthWatchdog=setTimeout(()=>{if(ytAuthPending)ytAuthFinish('Google chưa phản hồi sau 20 giây. Kiểm tra cửa sổ đăng nhập, quyền pop-up hoặc thử mở ứng dụng bằng Chrome thay vì trình duyệt trong ứng dụng.');},20000);
+ try{
+  ytState.client=google.accounts.oauth2.initTokenClient({
+   client_id:id,
+   scope:'https://www.googleapis.com/auth/youtube.readonly',
+   callback:r=>{
+    if(r?.error||!r?.access_token){ytAuthFinish('Google từ chối kết nối YouTube: '+(r?.error_description||r?.error||'Không nhận được access token')+'. Kiểm tra Google Auth Platform → Data access và Audience.');return;}
+    ytState.token=r.access_token;
+    ytState.expires=Date.now()+Math.max(60,(r.expires_in||3600)-60)*1000;
+    ytAuthFinish('✓ Đã đăng nhập YouTube. Đang kiểm tra quyền và tải các kênh đã đăng ký…');
+    ytLoadSubscriptions();
+   },
+   error_callback:e=>{
+    const type=e?.type||'unknown_error';
+    const help=type==='popup_failed_to_open'?'Trình duyệt không mở được cửa sổ Google. Cho phép pop-up hoặc thử Chrome.':type==='popup_closed'?'Cửa sổ Google đã đóng trước khi hoàn tất cấp quyền.':'Hãy kiểm tra cấu hình OAuth và thử lại.';
+    ytAuthFinish('Không kết nối được YouTube ('+type+'). '+help);
+   }
+  });
+  ytState.client.requestAccessToken({prompt:'consent'});
+ }catch(e){ytAuthFinish('Lỗi khởi tạo đăng nhập YouTube: '+(e?.message||String(e)));}
 }
 async function ytApi(path){if(!ytTokenValid())throw Error('Phiên YouTube đã hết hạn. Hãy kết nối lại.');const response=await fetch('https://www.googleapis.com/youtube/v3/'+path,{headers:{Authorization:'Bearer '+ytState.token}});const data=await response.json().catch(()=>({}));if(!response.ok)throw Error(data.error?.message||('YouTube HTTP '+response.status));return data;}
 function ytThumb(item){return item.snippet?.thumbnails?.medium?.url||item.snippet?.thumbnails?.default?.url||'';}
