@@ -41,3 +41,11 @@ V12 YouTube OAuth diagnostic update (2026-11-12):
 - The connection button reflects token state; Spotify, exercises and Drive code preserved.
 - OAuth YouTube readonly scope may require Google verification in Production. For private testing, use Google Auth Platform > Audience > Testing and add your Google account as a test user, then retry.
 - YouTube Data API v3 must be enabled; authorized JavaScript origin must match the deployed HTTPS origin exactly.
+
+
+V12.2 - YOUTUBE OAUTH SCOPE FIX
+- YouTube OAuth requests youtube.readonly only, with include_granted_scopes=false.
+- Google Drive OAuth requests drive.file only, with include_granted_scopes=false.
+- Redirect OAuth uses a per-request state verified on return.
+- Refresh service worker cache.
+- Google Cloud OAuth Web Client must authorize the site's exact origin and redirect URI.
