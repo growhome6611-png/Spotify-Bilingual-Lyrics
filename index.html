@@ -413,7 +413,7 @@ async function fetchCurrentlyPlaying(force=false){
     isPlaying=!!d.is_playing;progressAnchorMs=Number(d.progress_ms)||0;progressAnchorAt=Date.now();
     playerPositionMs=progressAnchorMs;playerDurationMs=Number(d.item.duration_ms)||0;playerTrackUri=d.item.uri||'';lastPlaybackPollAt=Date.now();
     activePlaybackDeviceId=d.device?.id||'';activePlaybackIsWeb=!!webDeviceId&&activePlaybackDeviceId===webDeviceId;
-    renderProgressUI(playerPositionMs,playerDurationMs);$('playPauseBtn').textContent=isPlaying?'❚❚':'▶';
+    renderProgressUI(playerPositionMs,playerDurationMs);$('playPauseBtn').textContent=isPlaying?'❚❚':'▶';$('playPauseBtn').disabled=false;$('prevBtn').disabled=false;$('nextBtn').disabled=false;
     if(force||id!==lastTrackId){ lastTrackId=id; refreshLikeState(d.item.id); currentTrackKey=id||name+'|'+artist; await fetchLyrics(name,artist,album,d.item.duration_ms||0); }
     syncLyrics(getEstimatedProgress()/1000);
   }catch(e){ console.error(e);$('syncStatus').textContent='[Lỗi kết nối Spotify]'; }
@@ -733,7 +733,7 @@ function renderProgressUI(position,duration){
   $('fullSeekRange').disabled=!total;$('fullSeekRange').value=total?Math.round(Math.min(ms,total)/total*1000):0;
 }
 function showPlayerError(msg=''){const el=$('playerError');if(!msg){el.classList.remove('show');el.textContent='';return;}el.textContent=msg;el.classList.add('show');}
-function setPlayerReadyUI(ready){playerReady=ready;['prevBtn','playPauseBtn','nextBtn','volumeRange'].forEach(id=>$(id).disabled=!ready);$('seekRange').disabled=!playerDurationMs;$('activatePlayerBtn').textContent=ready?'✓':'🎧';$('activatePlayerBtn').dataset.ready=ready?'true':'false';$('activatePlayerBtn').title=ready?'Trình phát đã sẵn sàng • Chạm để kết nối lại':'Kích hoạt trình phát Spotify';$('activatePlayerBtn').setAttribute('aria-label',$('activatePlayerBtn').title);}
+function setPlayerReadyUI(ready){playerReady=ready;['prevBtn','playPauseBtn','nextBtn'].forEach(id=>$(id).disabled=!(ready||accessToken||refreshToken));$('volumeRange').disabled=!ready;$('seekRange').disabled=!playerDurationMs;$('activatePlayerBtn').textContent=ready?'✓':'🎧';$('activatePlayerBtn').dataset.ready=ready?'true':'false';$('activatePlayerBtn').title=ready?'Trình phát đã sẵn sàng • Chạm để kết nối lại':'Kích hoạt trình phát Spotify';$('activatePlayerBtn').setAttribute('aria-label',$('activatePlayerBtn').title);}
 function updatePlayerUI(state){
   if(!state)return; if(lastPlaybackPollAt && !activePlaybackIsWeb && Date.now()-lastPlaybackPollAt<12000)return; const tr=state.track_window?.current_track; playerPositionMs=state.position||0;playerDurationMs=state.duration||tr?.duration_ms||0;playerTrackUri=tr?.uri||'';isPlaying=!state.paused;progressAnchorMs=playerPositionMs;progressAnchorAt=Date.now();
   $('playPauseBtn').textContent=isPlaying?'❚❚':'▶'; $('elapsedText').textContent=fmtTime(playerPositionMs);$('durationText').textContent=fmtTime(playerDurationMs);$('seekRange').value=playerDurationMs?Math.round(playerPositionMs/playerDurationMs*1000):0;
@@ -790,9 +790,43 @@ async function playTrackInApp(t){
     switchTab('now');await viewTrackLyrics(t);isPlaying=true;$('playPauseBtn').textContent='❚❚';showPlayerError('');toast('Đã gửi lệnh phát bài hát.');
   }catch(e){showPlayerError('Không thể phát: '+e.message);throw e;}
 }
-async function togglePlayPause(){if(!webPlayer||!playerReady)return activateWebPlayer();try{await webPlayer.togglePlay();}catch(e){showPlayerError(e.message);}}
-async function previousTrack(){try{if(webPlayer)await webPlayer.previousTrack();}catch(e){showPlayerError(e.message);}}
-async function nextTrack(){try{if(webPlayer)await webPlayer.nextTrack();}catch(e){showPlayerError(e.message);}}
+// V11.15: control the actual Spotify Connect device, not an idle Web Playback SDK instance.
+let playbackCommandPending=false;
+async function spotifyPlaybackCommand(kind){
+  if(playbackCommandPending)return;
+  playbackCommandPending=true;
+  const buttons=['playPauseBtn','fullPlayPauseBtn','prevBtn','nextBtn'];
+  buttons.forEach(id=>{const el=$(id);if(el)el.disabled=true;});
+  try{
+    const state=await spotifyApi('/me/player');
+    const device=state?.device;
+    if(!device?.id)throw new Error('Chưa có thiết bị Spotify đang hoạt động. Hãy mở Spotify, phát thử một bài rồi quay lại.');
+    if(device.is_restricted)throw new Error('Thiết bị Spotify hiện tại không cho phép điều khiển từ ứng dụng khác.');
+    const webActive=!!(webDeviceId&&device.id===webDeviceId);
+    const playing=typeof state.is_playing==='boolean'?state.is_playing:isPlaying;
+    let endpoint,method='POST';
+    if(kind==='toggle'){endpoint=playing?'/me/player/pause':'/me/player/play';method='PUT';}
+    else endpoint=kind==='previous'?'/me/player/previous':'/me/player/next';
+    // Spotify Connect REST controls the active phone, desktop or web device.
+    await spotifyApi(endpoint+'?device_id='+encodeURIComponent(device.id),{method});
+    if(kind==='toggle'){
+      isPlaying=!playing;progressAnchorMs=Number(state.progress_ms)||playerPositionMs;
+      progressAnchorAt=Date.now();$('playPauseBtn').textContent=isPlaying?'❚❚':'▶';
+      if($('fullPlayPauseBtn'))$('fullPlayPauseBtn').textContent=isPlaying?'❚❚':'▶';
+    }
+    showPlayerError('');
+    setTimeout(()=>fetchCurrentlyPlaying(false),650);
+  }catch(e){
+    showPlayerError('Không thể điều khiển Spotify: '+e.message);
+    await fetchCurrentlyPlaying(false).catch(()=>{});
+  }finally{
+    playbackCommandPending=false;
+    buttons.forEach(id=>{const el=$(id);if(el)el.disabled=false;});
+  }
+}
+async function togglePlayPause(){return spotifyPlaybackCommand('toggle');}
+async function previousTrack(){return spotifyPlaybackCommand('previous');}
+async function nextTrack(){return spotifyPlaybackCommand('next');}
 async function seekSpotifyPosition(ms){
   try{
     if(activePlaybackIsWeb&&webPlayer&&playerReady)await webPlayer.seek(ms);

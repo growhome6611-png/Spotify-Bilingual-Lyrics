@@ -33,3 +33,5 @@ V11.13 - LUYEN TAP QUA LOI BAI HAT
 - Neu phat hien ban tren Drive khac voi may, ung dung khong ghi de tu dong.
 - Phat lai doan nhac yeu cau Spotify Premium, ket noi hop le va loi co moc thoi gian.
 - Khong thay doi du lieu loi bai hat va ban dich hien co.
+
+V11.15: Playback controls now target active Spotify Connect device via Web API; fixes idle Web SDK no-list-loaded error.
