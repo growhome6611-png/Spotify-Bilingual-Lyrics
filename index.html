@@ -1192,5 +1192,75 @@ $('ytConnect').onclick=ytConnect;$('ytSearch').onclick=()=>ytSearch();$('ytQuery
   <div id="exerciseContent"></div>
  </div><div class="exercise-footer"><button class="btn" id="exerciseEdit">✏️ Sửa câu</button><button class="btn primary" id="exerciseNext">Kiểm tra</button></div>
 </div></div>
+<script>
+/* V12.1 isolated YouTube connection controller. Runs even if the main app initialization fails. */
+(function(){
+ const btn=document.getElementById('ytConnect'), status=document.getElementById('ytStatus');
+ if(!btn||!status)return;
+ const set=(msg)=>{status.textContent=msg;status.style.whiteSpace='pre-line';};
+ const key='sbl-yt-v121-token';
+ let saved=null;try{saved=JSON.parse(sessionStorage.getItem(key)||'null')}catch(_){}
+ function showConnected(token,expires){
+  try{sessionStorage.setItem(key,JSON.stringify({token,expires}))}catch(_){}
+  if(typeof ytState!=='undefined'){ytState.token=token;ytState.expires=expires;ytUpdateConnectionUI();}
+  btn.disabled=false;btn.textContent='✓ YouTube đã kết nối';
+  set('✓ Đã cấp quyền YouTube. Đang tải danh sách kênh đã đăng ký…');
+  if(typeof ytLoadSubscriptions==='function')ytLoadSubscriptions().catch(e=>set('Đã cấp quyền, nhưng không tải được kênh: '+e.message));
+ }
+ if(saved?.token&&saved.expires>Date.now())showConnected(saved.token,saved.expires);
+ const qs=new URLSearchParams(location.hash.slice(1));
+ if(qs.has('access_token')&&sessionStorage.getItem('sbl-yt-redirect-pending')==='1'){
+  sessionStorage.removeItem('sbl-yt-redirect-pending');
+  const expires=Date.now()+(Number(qs.get('expires_in'))||3600)*1000;
+  history.replaceState(null,'',location.pathname+location.search);
+  showConnected(qs.get('access_token'),expires);
+ }else if(qs.has('error')&&sessionStorage.getItem('sbl-yt-redirect-pending')==='1'){
+  sessionStorage.removeItem('sbl-yt-redirect-pending');
+  set('Google từ chối đăng nhập: '+qs.get('error')+'. Kiểm tra quyền YouTube và Redirect URI.');
+  history.replaceState(null,'',location.pathname+location.search);
+ }
+ function clientId(){
+  const inp=document.getElementById('googleClientId');
+  const fromInput=inp?.value?.trim();
+  const candidates=Object.keys(localStorage).filter(k=>/gclient|google.*client/i.test(k)).map(k=>localStorage.getItem(k));
+  return fromInput||candidates.find(v=>/^\d+-[\w-]+\.apps\.googleusercontent\.com$/.test(v||''))||'';
+ }
+ function redirectLogin(id){
+  const redirect=location.origin+'/';
+  sessionStorage.setItem('sbl-yt-redirect-pending','1');
+  const url='https://accounts.google.com/o/oauth2/v2/auth?'+new URLSearchParams({client_id:id,redirect_uri:redirect,response_type:'token',scope:'https://www.googleapis.com/auth/youtube.readonly',include_granted_scopes:'true',prompt:'consent',state:'sbl-yt-v121'});
+  location.assign(url);
+ }
+ function offerRedirect(id,reason){
+  set(reason+' Chọn “Đăng nhập bằng chuyển hướng” bên dưới. Google Cloud phải có Authorized redirect URI: '+location.origin+'/');
+  let b=document.getElementById('ytRedirectLogin');
+  if(!b){b=document.createElement('button');b.id='ytRedirectLogin';b.type='button';b.className='btn';b.style.marginTop='10px';status.after(b);}
+  b.textContent='↗ Đăng nhập bằng chuyển hướng';b.onclick=()=>redirectLogin(id);
+ }
+ function start(e){
+  e.preventDefault();e.stopImmediatePropagation();
+  const id=clientId();
+  if(!id){set('Chưa tìm thấy Google OAuth Client ID (Web) đã lưu. Mở Cài đặt, nhập đầy đủ Client ID và nhấn Lưu.');return;}
+  if(!/^\d+-[\w-]+\.apps\.googleusercontent\.com$/.test(id)){set('Client ID không hợp lệ: cần kết thúc bằng .apps.googleusercontent.com');return;}
+  if(!window.isSecureContext){set('Google OAuth yêu cầu HTTPS.');return;}
+  set('Đã nhận thao tác bấm nút. Đang mở Google…');
+  btn.disabled=true;
+  let done=false;
+  const finish=()=>{done=true;btn.disabled=false;clearTimeout(timer);};
+  const timer=setTimeout(()=>{if(!done){finish();offerRedirect(id,'Google không phản hồi sau 12 giây. Có thể trình duyệt chặn popup hoặc thư viện Google chưa sẵn sàng.');}},12000);
+  if(!window.google?.accounts?.oauth2){finish();offerRedirect(id,'Không tải được Google Identity Services.');return;}
+  try{
+   const client=google.accounts.oauth2.initTokenClient({client_id:id,scope:'https://www.googleapis.com/auth/youtube.readonly',callback:r=>{
+    finish();if(r?.access_token)showConnected(r.access_token,Date.now()+(Number(r.expires_in)||3600)*1000);
+    else offerRedirect(id,'Google OAuth không cấp token: '+(r?.error_description||r?.error||'không rõ lỗi')+'.');
+   },error_callback:r=>{finish();offerRedirect(id,'Không mở được cửa sổ Google ('+(r?.type||'unknown')+').');}});
+   client.requestAccessToken({prompt:'consent'});
+  }catch(err){finish();offerRedirect(id,'Lỗi gọi Google OAuth: '+err.message+'.');}
+ }
+ btn.addEventListener('click',start,true);
+ btn.addEventListener('pointerdown',()=>{if(!btn.disabled)btn.dataset.ytTap='1';},true);
+ window.addEventListener('error',e=>{if(document.getElementById('panel-youtube')?.classList.contains('active'))set('Lỗi JavaScript: '+e.message);});
+})();
+</script>
 </body>
 </html>
