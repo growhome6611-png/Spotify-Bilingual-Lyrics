@@ -23,3 +23,13 @@ V11.9 (2026-11-02)
 - Sửa cửa sổ cài đặt cuộn độc lập, giới hạn chiều cao theo màn hình điện thoại.
 - Nút Lưu và Đóng luôn nằm trong cửa sổ, tránh bị thanh điều hướng che.
 - Giữ nguyên các ID và hàm đồng bộ của V11.8, không xóa dữ liệu cục bộ.
+
+V11.13 - LUYEN TAP QUA LOI BAI HAT
+- Nhan nut mu tot nghiep (🎓) tren thanh dieu khien.
+- Tao 5/10/20 cau: dien tu, trac nghiem, sap xep, nghe chep chinh ta.
+- Tao tu dong tren thiet bi khong can API, hoac chon AI Gemini va nhap Gemini API key.
+- Cho phep them, sua, xoa cau hoi, cham diem va luu ket qua tren thiet bi.
+- Nut Dong bo bai tap: luu tai tep JSON rieng trong thu muc Spotify Bilingual Lyrics tren Drive.
+- Neu phat hien ban tren Drive khac voi may, ung dung khong ghi de tu dong.
+- Phat lai doan nhac yeu cau Spotify Premium, ket noi hop le va loi co moc thoi gian.
+- Khong thay doi du lieu loi bai hat va ban dich hien co.
