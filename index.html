@@ -355,7 +355,8 @@ body > header{display:none!important}
 <div class="popup" id="dictPopup"><button class="close-x" id="closePopup">×</button><div class="popup-title" id="dictWord"></div><div class="popup-body" id="dictMeaning">Đang tra...</div><button class="btn primary" id="saveDictWordBtn" type="button" style="margin-top:12px;width:100%">＋ Lưu từ vựng</button></div>
 <div class="toast" id="toast"></div>
 
-<script src="https://accounts.google.com/gsi/client" async defer>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
 // Saved vocabulary V13.1: local, independent from Spotify liked songs and translation cache.
 const VOCAB_STORAGE='spotify_bilingual_saved_vocab_v131';
 function getVocab(){try{const x=JSON.parse(localStorage.getItem(VOCAB_STORAGE)||'[]');return Array.isArray(x)?x:[]}catch(_){return []}}
