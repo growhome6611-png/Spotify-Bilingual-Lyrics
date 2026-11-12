@@ -60,3 +60,5 @@ V12.2 - YOUTUBE OAUTH SCOPE FIX
 - Redirect OAuth uses a per-request state verified on return.
 - Refresh service worker cache.
 - Google Cloud OAuth Web Client must authorize the site's exact origin and redirect URI.
+
+V13.1: Bottom-right saved vocabulary tab. Save from word lookup, search, edit/delete, speech playback and JSON export. Stored locally in browser (not synced to Drive).

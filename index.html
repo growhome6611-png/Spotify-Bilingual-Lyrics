@@ -162,6 +162,9 @@ body > header{display:none!important}
 .full-font-controls button{border:0;background:rgba(255,255,255,.13);color:white;border-radius:50%;width:34px;height:34px;font-size:.85rem;font-weight:800;cursor:pointer}
 .full-font-controls span{font-size:.7rem;min-width:35px;text-align:center}
 @media(max-width:640px){.quick-player-toolbar{gap:2px!important}.full-font-controls{left:10px;top:max(74px,calc(env(safe-area-inset-top) + 70px))}}
+
+/* V13.1 - saved vocabulary */
+.vocab-search{display:flex;gap:8px;margin:12px 0}.vocab-search input{flex:1;min-width:0;border:1px solid #383838;background:#222;color:white;border-radius:12px;padding:11px}.vocab-search button{white-space:nowrap}.vocab-hint{color:#aaa;font-size:.8rem;margin:8px 0 16px}.vocab-list{display:grid;gap:10px;padding-bottom:100px}.vocab-card{background:#1c1c1c;border:1px solid #343434;border-radius:15px;padding:13px}.vocab-card-head{display:flex;justify-content:space-between;align-items:center;gap:8px}.vocab-word{font-weight:750;font-size:1.18rem;color:#1ed760}.vocab-meaning{color:#b5eac8;margin-top:6px;overflow-wrap:anywhere}.vocab-meta{color:#999;font-size:.76rem;margin-top:7px}.vocab-context{font-size:.84rem;color:#ddd;margin-top:7px;font-style:italic}.vocab-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.vocab-actions button{border:1px solid #444;background:#262626;color:#eee;border-radius:9px;padding:7px 11px}.vocab-count{font-size:.78rem;color:#1ed760}.bottom-nav-btn[data-bottom="vocab"] .ico{color:#1ed760}
 </style>
 </head>
 <body>
@@ -277,6 +280,12 @@ body > header{display:none!important}
     </div>
     <div class="inline-create" style="margin-top:16px"><input id="quickPlaylistName" placeholder="Tên playlist mới"><button class="btn primary" id="quickCreatePlaylistBtn">Tạo</button></div>
   </section>
+  <section class="panel" id="panel-vocab">
+    <div class="section-head"><h3>📖 Từ vựng đã lưu <span id="vocabCount" class="vocab-count">0</span></h3></div>
+    <div class="vocab-search"><input id="vocabSearch" placeholder="Tìm từ, nghĩa hoặc bài hát..." aria-label="Tìm từ đã lưu"><button class="btn" id="vocabExportBtn" type="button">↓ Xuất JSON</button></div>
+    <div class="vocab-hint">Từ đã lưu trên thiết bị này. Chạm vào từ trong lời bài hát → Lưu từ để thêm vào đây.</div>
+    <div id="vocabList" class="vocab-list"></div>
+  </section>
 </main>
 
 <nav class="bottom-nav" id="bottomNav">
@@ -284,6 +293,7 @@ body > header{display:none!important}
   <button class="bottom-nav-btn" data-bottom="search"><span class="ico">⌕</span><span>Tìm kiếm</span></button>
   <button class="bottom-nav-btn" data-bottom="library"><span class="ico">▥</span><span>Thư viện</span></button>
   <button class="bottom-nav-btn" data-bottom="create"><span class="ico">＋</span><span>Tạo</span></button>
+  <button class="bottom-nav-btn" data-bottom="vocab" aria-label="Từ đã lưu"><span class="ico">▤</span><span>Từ đã lưu</span></button>
 </nav>
 
 <section class="lyrics-screen" id="lyricsScreen" aria-hidden="true">
@@ -342,10 +352,21 @@ body > header{display:none!important}
   <div class="playlist-picker-list" id="playlistPickerList"></div>
   <div class="dialog-actions"><button class="btn" id="closePickerBtn">Đóng</button></div>
 </div></div>
-<div class="popup" id="dictPopup"><button class="close-x" id="closePopup">×</button><div class="popup-title" id="dictWord"></div><div class="popup-body" id="dictMeaning">Đang tra...</div></div>
+<div class="popup" id="dictPopup"><button class="close-x" id="closePopup">×</button><div class="popup-title" id="dictWord"></div><div class="popup-body" id="dictMeaning">Đang tra...</div><button class="btn primary" id="saveDictWordBtn" type="button" style="margin-top:12px;width:100%">＋ Lưu từ vựng</button></div>
 <div class="toast" id="toast"></div>
 
-<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://accounts.google.com/gsi/client" async defer>
+// Saved vocabulary V13.1: local, independent from Spotify liked songs and translation cache.
+const VOCAB_STORAGE='spotify_bilingual_saved_vocab_v131';
+function getVocab(){try{const x=JSON.parse(localStorage.getItem(VOCAB_STORAGE)||'[]');return Array.isArray(x)?x:[]}catch(_){return []}}
+function putVocab(items){try{localStorage.setItem(VOCAB_STORAGE,JSON.stringify(items));return true}catch(e){toast('Không lưu được từ: '+e.message);return false}}
+function saveLookedUpWord(){const word=$('dictWord').textContent.trim();if(!word)return;const meaning=$('dictMeaning').textContent.replace(/^Nghĩa:\s*/i,'').trim();if(!meaning||meaning==='Đang tra…'){toast('Vui lòng đợi kết quả tra từ.');return}const items=getVocab(),lang=$('targetLang').value;const key=word.toLocaleLowerCase()+'|'+lang;const song=typeof currentSongMeta==='function'?currentSongMeta():{title:'',artist:''};const line=lyrics[activeIndex]?.text||'';const entry={id:key,word,meaning,lang,song:song.title||'',artist:song.artist||'',context:line,savedAt:new Date().toISOString()};const i=items.findIndex(x=>x.id===key);if(i>=0)items[i]={...items[i],...entry};else items.unshift(entry);if(putVocab(items)){$('saveDictWordBtn').textContent='✓ Đã lưu';toast('Đã lưu từ: '+word);if(currentTab==='vocab')renderVocab()}}
+function renderVocab(){const all=getVocab();$('vocabCount').textContent=String(all.length);const q=$('vocabSearch').value.trim().toLocaleLowerCase();const items=all.filter(x=>[x.word,x.meaning,x.song,x.artist,x.context].some(v=>String(v||'').toLocaleLowerCase().includes(q)));$('vocabList').innerHTML=items.length?items.map(x=>`<article class="vocab-card" data-vocab-id="${esc(x.id)}"><div class="vocab-card-head"><span class="vocab-word">${esc(x.word)}</span><span class="vocab-meta">${esc(x.lang||'vi')}</span></div><div class="vocab-meaning">${esc(x.meaning)}</div>${x.context?`<div class="vocab-context">“${esc(x.context)}”</div>`:''}<div class="vocab-meta">♫ ${esc(x.song||'Không rõ bài hát')}${x.artist?' — '+esc(x.artist):''}</div><div class="vocab-actions"><button data-vocab-act="speak">🔊 Nghe</button><button data-vocab-act="edit">✎ Sửa nghĩa</button><button data-vocab-act="delete">✕ Xóa</button></div></article>`).join(''):'<div class="empty-small">'+(q?'Không có từ phù hợp.':'Chưa có từ được lưu. Hãy chạm một từ trong lời bài hát và chọn Lưu từ vựng.')+'</div>'}
+$('saveDictWordBtn').addEventListener('click',saveLookedUpWord);
+$('vocabSearch').addEventListener('input',renderVocab);
+$('vocabList').addEventListener('click',e=>{const btn=e.target.closest('[data-vocab-act]');if(!btn)return;const id=btn.closest('[data-vocab-id]')?.dataset.vocabId;const items=getVocab(),idx=items.findIndex(x=>x.id===id);if(idx<0)return;const item=items[idx];if(btn.dataset.vocabAct==='speak'){if(!('speechSynthesis'in window)){toast('Trình duyệt không hỗ trợ phát âm.');return}speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(item.word);u.lang='en-US';speechSynthesis.speak(u)}else if(btn.dataset.vocabAct==='edit'){const value=prompt('Sửa nghĩa của '+item.word,item.meaning);if(value===null)return;if(!value.trim()){toast('Nghĩa không được để trống.');return}items[idx].meaning=value.trim();if(putVocab(items))renderVocab()}else if(btn.dataset.vocabAct==='delete'){if(!confirm('Xóa từ “'+item.word+'” khỏi danh sách?'))return;items.splice(idx,1);if(putVocab(items))renderVocab()}});
+$('vocabExportBtn').addEventListener('click',()=>{const data=JSON.stringify({version:1,exportedAt:new Date().toISOString(),words:getVocab()},null,2);const url=URL.createObjectURL(new Blob([data],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='spotify-tu-vung-da-luu.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)});
+</script>
 <script src="https://sdk.scdn.co/spotify-player.js"></script>
 <script>
 'use strict';
@@ -678,7 +699,7 @@ async function restoreTranslationFromDrive(){
 async function restoreTranslationsSmart(){const local=restoreCachedTranslations();if(local){updateDriveStatus();return true;}const drive=await restoreTranslationFromDrive();return drive;}
 async function syncDriveNow(){if(!driveTokenValid()){connectGoogleDrive();return;}if(hasAnyTranslation())await uploadCurrentTranslationToDrive();else await restoreTranslationFromDrive();await verifyDriveSync();}
 
-async function lookupWord(word){ if(!word)return;$('dictWord').textContent=word;$('dictMeaning').textContent='Đang tra…';$('dictPopup').classList.add('open');try{const out=await googleTranslate([word],$('targetLang').value);$('dictMeaning').innerHTML='Nghĩa: <b>'+esc(out[0]||'')+'</b>';}catch(e){$('dictMeaning').textContent=e.message;} }
+async function lookupWord(word){ if(!word)return;$('dictWord').textContent=word;$('dictMeaning').textContent='Đang tra…';$('dictPopup').classList.add('open');$('saveDictWordBtn').textContent='＋ Lưu từ vựng';try{const out=await googleTranslate([word],$('targetLang').value);$('dictMeaning').innerHTML='Nghĩa: <b>'+esc(out[0]||'')+'</b>';}catch(e){$('dictMeaning').textContent=e.message;} }
 
 
 
@@ -860,7 +881,7 @@ function switchTab(name){
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active')); const panel=$('panel-'+name); if(panel)panel.classList.add('active');
   $('playerShell').style.display=name==='now'?'block':'none';
   $('lyricToolbar').style.display=name==='now'?'flex':'none';
-  if(name==='library')loadLibrary(); if(name==='collections')loadPlaylists();
+  if(name==='library')loadLibrary(); if(name==='collections')loadPlaylists(); if(name==='vocab')renderVocab();
 }
 function trackData(t){return {id:t.id,uri:t.uri||('spotify:track:'+t.id),name:t.name||'',artist:(t.artists||[]).map(a=>a.name).join(', '),album:t.album?.name||'',cover:t.album?.images?.[1]?.url||t.album?.images?.[0]?.url||'',duration:t.duration_ms||0,spotifyUrl:t.external_urls?.spotify||''};}
 function renderTrackItem(t,context='search'){
