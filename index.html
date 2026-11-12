@@ -284,7 +284,7 @@ body > header{display:none!important}
     <div class="section-head"><h3>📖 Từ vựng đã lưu <span id="vocabCount" class="vocab-count">0</span></h3></div>
     <div class="vocab-search"><input id="vocabSearch" placeholder="Tìm từ, nghĩa hoặc bài hát..." aria-label="Tìm từ đã lưu"><button class="btn" id="vocabExportBtn" type="button">↓ Xuất JSON</button></div>
     <div class="vocab-filterbar"><select id="vocabPeriod" aria-label="Lọc thời gian"><option value="all">Tất cả thời gian</option><option value="today">Hôm nay</option><option value="week">Tuần này</option><option value="month">Tháng này</option><option value="year">Năm nay</option><option value="custom">Khoảng ngày tự chọn</option><option value="customweek">Tuần tự chọn</option><option value="customyear">Năm tự chọn</option></select><select id="vocabPos" aria-label="Lọc loại từ"><option value="all">Tất cả loại từ</option><option value="noun">Danh từ</option><option value="verb">Động từ</option><option value="adjective">Tính từ</option><option value="adverb">Trạng từ</option><option value="pronoun">Đại từ</option><option value="preposition">Giới từ</option><option value="conjunction">Liên từ</option><option value="interjection">Thán từ</option><option value="phrase">Cụm từ</option><option value="other">Khác / chưa phân loại</option></select><div id="vocabDateFields" class="vocab-date-fields"><input id="vocabFrom" type="date" aria-label="Từ ngày"><input id="vocabTo" type="date" aria-label="Đến ngày"></div></div>
-    <div class="vocab-syncbar"><button id="vocabSyncBtn" type="button">☁ Đồng bộ Google Drive</button><button id="vocabRestoreBtn" type="button">↻ Lấy từ Drive</button><small id="vocabSyncStatus">Dữ liệu trên thiết bị được giữ nguyên; nhấn đồng bộ để sao lưu.</small></div>
+    <div class="vocab-syncbar"><button id="vocabBackfillBtn" type="button">🏷 Phân loại lại từ cũ</button><button id="vocabSyncBtn" type="button">☁ Đồng bộ Google Drive</button><button id="vocabRestoreBtn" type="button">↻ Lấy từ Drive</button><small id="vocabSyncStatus">Dữ liệu trên thiết bị được giữ nguyên; nhấn đồng bộ để sao lưu.</small></div>
     <div class="vocab-hint">Chọn thời gian và loại từ để lọc. Từ chưa phân loại có thể chỉnh sửa trong từng thẻ.</div>
     <div id="vocabList" class="vocab-list"></div>
   </section>
@@ -354,7 +354,7 @@ body > header{display:none!important}
   <div class="playlist-picker-list" id="playlistPickerList"></div>
   <div class="dialog-actions"><button class="btn" id="closePickerBtn">Đóng</button></div>
 </div></div>
-<div class="popup" id="dictPopup"><button class="close-x" id="closePopup">×</button><div class="popup-title" id="dictWord"></div><div class="popup-body" id="dictMeaning">Đang tra...</div><button class="btn primary" id="saveDictWordBtn" type="button" style="margin-top:12px;width:100%">＋ Lưu từ vựng</button></div>
+<div class="popup" id="dictPopup"><button class="close-x" id="closePopup">×</button><div class="popup-title" id="dictWord"></div><div class="popup-body" id="dictMeaning">Đang tra...</div><div id="dictGrammar" style="color:#a6dfb9;font-size:.86rem;margin-top:8px"></div><button class="btn primary" id="saveDictWordBtn" type="button" style="margin-top:12px;width:100%">＋ Lưu từ vựng</button></div>
 <div class="toast" id="toast"></div>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -690,9 +690,45 @@ async function restoreTranslationFromDrive(){
 async function restoreTranslationsSmart(){const local=restoreCachedTranslations();if(local){updateDriveStatus();return true;}const drive=await restoreTranslationFromDrive();return drive;}
 async function syncDriveNow(){if(!driveTokenValid()){connectGoogleDrive();return;}if(hasAnyTranslation())await uploadCurrentTranslationToDrive();else await restoreTranslationFromDrive();await verifyDriveSync();}
 
-async function lookupWord(word){ if(!word)return;$('dictWord').textContent=word;$('dictMeaning').textContent='Đang tra…';$('dictPopup').classList.add('open');$('saveDictWordBtn').textContent='＋ Lưu từ vựng';try{const out=await googleTranslate([word],$('targetLang').value);$('dictMeaning').innerHTML='Nghĩa: <b>'+esc(out[0]||'')+'</b>';}catch(e){$('dictMeaning').textContent=e.message;} }
-
-
+// V13.5: dictionary POS from lexical API, preserving translation and offline behavior.
+let currentDictInfo=null,dictRequestId=0;
+const DICT_POS_MAP={noun:'noun',verb:'verb',adjective:'adjective',adverb:'adverb',pronoun:'pronoun',preposition:'preposition',conjunction:'conjunction',interjection:'interjection',determiner:'adjective',exclamation:'interjection'};
+async function fetchWordGrammar(word,context=''){
+  const clean=String(word||'').toLowerCase().replace(/[^a-z' -]/g,'').trim();
+  if(!clean)return null;
+  const candidates=[clean];
+  if(clean.endsWith('ied'))candidates.push(clean.slice(0,-3)+'y');
+  if(clean.endsWith('ed'))candidates.push(clean.slice(0,-1),clean.slice(0,-2));
+  if(clean.endsWith('ing'))candidates.push(clean.slice(0,-3)+'e',clean.slice(0,-3));
+  if(clean.endsWith('ies'))candidates.push(clean.slice(0,-3)+'y');
+  if(clean.endsWith('es'))candidates.push(clean.slice(0,-2),clean.slice(0,-1));
+  if(clean.endsWith('s'))candidates.push(clean.slice(0,-1));
+  for(const lemma of [...new Set(candidates.filter(Boolean))]){
+    try{
+      const res=await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/'+encodeURIComponent(lemma));
+      if(!res.ok)continue;
+      const data=await res.json(),entries=Array.isArray(data)?data:[];
+      const types=[...new Set(entries.flatMap(e=>(e.meanings||[]).map(m=>DICT_POS_MAP[m.partOfSpeech]).filter(Boolean)))];
+      if(!types.length)continue;
+      const phonetic=entries.map(e=>e.phonetic||e.phonetics?.find(x=>x.text)?.text).find(Boolean)||'';
+      const lower=String(context||'').toLowerCase(),idx=lower.indexOf(clean),before=idx>=0?lower.slice(Math.max(0,idx-24),idx).trim().split(/\s+/).pop():'';
+      let selected=types[0];
+      if(types.includes('verb')&&(/^(i|you|we|they|he|she|it|to|will|would|can|could|should|did|does|do|am|is|are|was|were|have|has|had|be|been|being|not)$/i.test(before)||/ed$|ing$/.test(clean)))selected='verb';
+      else if(types.includes('noun')&&/^(a|an|the|my|your|his|her|our|their)$/i.test(before))selected='noun';
+      return {pos:selected,alternatives:types,lemma,phonetic,source:'Free Dictionary API'};
+    }catch(e){console.warn('Dictionary lookup:',e.message);break;}
+  }
+  return null;
+}
+async function lookupWord(word){
+  if(!word)return;
+  const request=++dictRequestId,context=lyrics[activeIndex]?.text||'';
+  currentDictInfo=null;$('dictWord').textContent=word;$('dictMeaning').textContent='Đang tra…';$('dictGrammar').textContent='Đang xác định loại từ…';
+  $('dictPopup').classList.add('open');$('saveDictWordBtn').textContent='＋ Lưu từ vựng';
+  const grammar=fetchWordGrammar(word,context).then(info=>{if(request!==dictRequestId)return;currentDictInfo=info;$('dictGrammar').textContent=info?'Loại từ: '+(VOCAB_POS[info.pos]||'Chưa xác định')+(info.lemma!==word.toLowerCase()?' · Từ gốc: '+info.lemma:'')+(info.phonetic?' · '+info.phonetic:'')+(info.alternatives.length>1?' · Có thể là: '+info.alternatives.map(x=>VOCAB_POS[x]).join(', '):''):'Loại từ: chưa xác định (có thể sửa thủ công)';});
+  const meaning=googleTranslate([word],$('targetLang').value).then(out=>{if(request!==dictRequestId)return;$('dictMeaning').innerHTML='Nghĩa: <b>'+esc(out[0]||'')+'</b>';}).catch(e=>{if(request===dictRequestId)$('dictMeaning').textContent=e.message;});
+  await Promise.allSettled([grammar,meaning]);
+}
 
 
 // ---------- V5 full-screen lyrics ----------
@@ -1063,16 +1099,37 @@ function putVocab(items,autoSync=true){try{localStorage.setItem(VOCAB_STORAGE,JS
 function vocabPosGuess(word){const w=String(word||'').trim();if(w.includes(' '))return 'phrase';return 'other'}
 function vocabStatus(msg){const el=$('vocabSyncStatus');if(el)el.textContent=msg}
 function scheduleVocabSync(){clearTimeout(vocabSyncTimer);vocabSyncTimer=setTimeout(()=>syncVocabDrive().catch(e=>vocabStatus('Chưa đồng bộ: '+e.message)),1800)}
-function saveLookedUpWord(){const word=$('dictWord').textContent.trim();if(!word)return;const meaning=$('dictMeaning').textContent.replace(/^Nghĩa:\s*/i,'').trim();if(!meaning||meaning==='Đang tra…'){toast('Vui lòng đợi kết quả tra từ.');return}const items=getVocab(),lang=$('targetLang').value;const key=word.toLocaleLowerCase()+'|'+lang;const song=typeof currentSongMeta==='function'?currentSongMeta():{title:'',artist:''};const line=lyrics[activeIndex]?.text||'';const now=new Date().toISOString();const i=items.findIndex(x=>x.id===key);const entry={id:key,word,meaning,lang,song:song.title||'',artist:song.artist||'',context:line,savedAt:i>=0?(items[i].savedAt||now):now,updatedAt:now,pos:i>=0?(items[i].pos||vocabPosGuess(word)):vocabPosGuess(word)};if(i>=0)items[i]={...items[i],...entry,deletedAt:null};else items.unshift(entry);if(putVocab(items)){$('saveDictWordBtn').textContent='✓ Đã lưu';toast('Đã lưu từ: '+word)}}
+function saveLookedUpWord(){const word=$('dictWord').textContent.trim();if(!word)return;const meaning=$('dictMeaning').textContent.replace(/^Nghĩa:\s*/i,'').trim();if(!meaning||meaning==='Đang tra…'){toast('Vui lòng đợi kết quả tra từ.');return}const items=getVocab(),lang=$('targetLang').value;const key=word.toLocaleLowerCase()+'|'+lang;const song=typeof currentSongMeta==='function'?currentSongMeta():{title:'',artist:''};const line=lyrics[activeIndex]?.text||'';const now=new Date().toISOString();const i=items.findIndex(x=>x.id===key);const entry={id:key,word,meaning,lang,song:song.title||'',artist:song.artist||'',context:line,savedAt:i>=0?(items[i].savedAt||now):now,updatedAt:now,pos:i>=0&&items[i].pos&&items[i].pos!=='other'?items[i].pos:(currentDictInfo?.pos||vocabPosGuess(word)),lemma:currentDictInfo?.lemma||items[i]?.lemma||word.toLowerCase(),phonetic:currentDictInfo?.phonetic||items[i]?.phonetic||'',posAlternatives:currentDictInfo?.alternatives||items[i]?.posAlternatives||[]};if(i>=0)items[i]={...items[i],...entry,deletedAt:null};else items.unshift(entry);if(putVocab(items)){$('saveDictWordBtn').textContent='✓ Đã lưu';toast('Đã lưu từ: '+word)}}
 function vocabDateLocal(value){const d=new Date(value);if(!Number.isFinite(d.getTime()))return null;return new Date(d.getFullYear(),d.getMonth(),d.getDate())}
 function vocabWeekStart(d){const t=new Date(d.getFullYear(),d.getMonth(),d.getDate());t.setDate(t.getDate()-(t.getDay()+6)%7);return t}
 function vocabDateMatch(x){const p=$('vocabPeriod').value;if(p==='all')return true;const d=vocabDateLocal(x.savedAt);if(!d)return false;const now=new Date(),today=new Date(now.getFullYear(),now.getMonth(),now.getDate());if(p==='today')return d.getTime()===today.getTime();if(p==='week')return d>=vocabWeekStart(today)&&d<new Date(vocabWeekStart(today).getTime()+7*86400000);if(p==='month')return d.getFullYear()===today.getFullYear()&&d.getMonth()===today.getMonth();if(p==='year')return d.getFullYear()===today.getFullYear();if(p==='customyear'){const year=Number($('vocabFrom').value);return !year||d.getFullYear()===year}if(p==='customweek'){const v=$('vocabFrom').value;if(!v)return true;const parts=v.split('-W');const year=Number(parts[0]),week=Number(parts[1]);if(!year||!week)return true;const jan4=new Date(year,0,4);const monday=vocabWeekStart(jan4);monday.setDate(monday.getDate()+(week-1)*7);return d>=monday&&d<new Date(monday.getTime()+7*86400000)}const from=$('vocabFrom').value,to=$('vocabTo').value;return (!from||d>=new Date(from+'T00:00:00'))&&(!to||d<=new Date(to+'T23:59:59'))}
-function renderVocab(){const all=getVocab().filter(x=>!x.deletedAt);$('vocabCount').textContent=String(all.length);const q=$('vocabSearch').value.trim().toLocaleLowerCase(),pos=$('vocabPos').value;const items=all.filter(x=>(pos==='all'||(x.pos||'other')===pos)&&vocabDateMatch(x)&&[x.word,x.meaning,x.song,x.artist,x.context].some(v=>String(v||'').toLocaleLowerCase().includes(q)));$('vocabList').innerHTML=items.length?items.map(x=>`<article class="vocab-card" data-vocab-id="${esc(x.id)}"><div class="vocab-card-head"><span class="vocab-word">${esc(x.word)}</span><span class="vocab-meta">${esc(VOCAB_POS[x.pos]||VOCAB_POS.other)}</span></div><div class="vocab-meaning">${esc(x.meaning)}</div>${x.context?`<div class="vocab-context">“${esc(x.context)}”</div>`:''}<div class="vocab-meta">♫ ${esc(x.song||'Không rõ bài hát')}${x.artist?' — '+esc(x.artist):''} · ${x.savedAt?new Date(x.savedAt).toLocaleDateString('vi-VN'):''}</div><div class="vocab-actions"><button data-vocab-act="speak">🔊 Nghe</button><button data-vocab-act="edit">✎ Sửa nghĩa</button><button data-vocab-act="pos">🏷 Loại từ</button><button data-vocab-act="delete">✕ Xóa</button></div></article>`).join(''):'<div class="empty-small">Không có từ phù hợp với bộ lọc hiện tại.</div>'}
+function renderVocab(){const all=getVocab().filter(x=>!x.deletedAt);$('vocabCount').textContent=String(all.length);const q=$('vocabSearch').value.trim().toLocaleLowerCase(),pos=$('vocabPos').value;const items=all.filter(x=>(pos==='all'||(x.pos||'other')===pos)&&vocabDateMatch(x)&&[x.word,x.meaning,x.song,x.artist,x.context].some(v=>String(v||'').toLocaleLowerCase().includes(q)));$('vocabList').innerHTML=items.length?items.map(x=>`<article class="vocab-card" data-vocab-id="${esc(x.id)}"><div class="vocab-card-head"><span class="vocab-word">${esc(x.word)}</span><span class="vocab-meta">${esc(VOCAB_POS[x.pos]||VOCAB_POS.other)}</span></div><div class="vocab-meaning">${esc(x.meaning)}</div>${x.lemma&&x.lemma!==x.word.toLowerCase()?`<div class="vocab-meta">Từ gốc: ${esc(x.lemma)}${x.phonetic?' · '+esc(x.phonetic):''}</div>`:''}${x.context?`<div class="vocab-context">“${esc(x.context)}”</div>`:''}<div class="vocab-meta">♫ ${esc(x.song||'Không rõ bài hát')}${x.artist?' — '+esc(x.artist):''} · ${x.savedAt?new Date(x.savedAt).toLocaleDateString('vi-VN'):''}</div><div class="vocab-actions"><button data-vocab-act="speak">🔊 Nghe</button><button data-vocab-act="edit">✎ Sửa nghĩa</button><button data-vocab-act="pos">🏷 Loại từ</button><button data-vocab-act="delete">✕ Xóa</button></div></article>`).join(''):'<div class="empty-small">Không có từ phù hợp với bộ lọc hiện tại.</div>'}
 function vocabConfigurePeriod(){const p=$('vocabPeriod').value,fields=$('vocabDateFields'),a=$('vocabFrom'),b=$('vocabTo');fields.classList.toggle('open',['custom','customweek','customyear'].includes(p));a.type=p==='customweek'?'week':p==='customyear'?'number':'date';a.placeholder=p==='customyear'?'Nhập năm, ví dụ 2026':'Từ ngày';if(p==='customyear'){a.min='1900';a.max='2100';a.value=String(new Date().getFullYear())}else a.value='';b.style.display=p==='custom'?'':'none';b.value='';renderVocab()}
 async function findVocabDriveFile(){const folder=await ensureDriveFolder();const q=encodeURIComponent(`name='${VOCAB_FILE}' and '${folder}' in parents and trashed=false`);const d=await driveApi('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name,modifiedTime)&pageSize=10');return d?.files?.[0]||null}
 function vocabMerge(local,remote){const map=new Map();for(const item of [...remote,...local]){if(!item||!item.id)continue;const prev=map.get(item.id);const t=Date.parse(item.updatedAt||item.deletedAt||item.savedAt)||0,pt=Date.parse(prev?.updatedAt||prev?.deletedAt||prev?.savedAt)||0;if(!prev||t>pt||(t===pt&&item.deletedAt&&!prev.deletedAt))map.set(item.id,item)}return [...map.values()].sort((a,b)=>(Date.parse(b.savedAt)||0)-(Date.parse(a.savedAt)||0))}
 async function syncVocabDrive(){if(vocabSyncBusy)return;if(!driveTokenValid()){vocabStatus('Chưa kết nối Drive. Mở Cài đặt → Kết nối Google Drive.');toast('Hãy kết nối Google Drive trong Cài đặt.');return}vocabSyncBusy=true;vocabStatus('Đang đối chiếu từ vựng trên Drive...');$('vocabSyncBtn').disabled=true;$('vocabRestoreBtn').disabled=true;try{const file=await findVocabDriveFile();let remote=[];if(file){const payload=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(file.id)+'?alt=media');if(!Array.isArray(payload?.words))throw new Error('Tệp Drive không có danh sách từ hợp lệ.');remote=payload.words}const merged=vocabMerge(getVocab(),remote);if(!putVocab(merged,false))throw new Error('Không ghi được dữ liệu về thiết bị.');const folder=await ensureDriveFolder();const meta={name:VOCAB_FILE,mimeType:'application/json',...(file?{}:{parents:[folder]})};await uploadMultipartDrive(meta,{version:2,updatedAt:new Date().toISOString(),words:merged},file?.id||'');vocabStatus('✓ Đã đồng bộ '+merged.filter(x=>!x.deletedAt).length+' từ · '+new Date().toLocaleString('vi-VN'));toast('Đồng bộ từ vựng Google Drive thành công.')}catch(e){vocabStatus('Đồng bộ thất bại: '+e.message);throw e}finally{vocabSyncBusy=false;$('vocabSyncBtn').disabled=false;$('vocabRestoreBtn').disabled=false;renderVocab()}}
 $('saveDictWordBtn').addEventListener('click',saveLookedUpWord);
+async function backfillVocabGrammar(){
+ const btn=$('vocabBackfillBtn');btn.disabled=true;
+ try{
+  let items=getVocab(),updated=0,unknown=0;
+  const pending=items.filter(x=>!x.deletedAt&&(!x.pos||x.pos==='other'));
+  for(let i=0;i<pending.length;i++){
+   btn.textContent='Đang phân loại '+(i+1)+'/'+pending.length;
+   const item=pending[i],info=await fetchWordGrammar(item.word,item.context);
+   if(!info){unknown++;continue}
+   // Re-read after network to preserve any newly saved words.
+   items=getVocab();const at=items.findIndex(x=>x.id===item.id);
+   if(at>=0&&(!items[at].pos||items[at].pos==='other')){
+    items[at]={...items[at],pos:info.pos,lemma:info.lemma,phonetic:info.phonetic,posAlternatives:info.alternatives,updatedAt:new Date().toISOString()};
+    putVocab(items,false);updated++;
+   }
+  }
+  if(updated&&driveTokenValid())scheduleVocabSync();
+  toast('Đã phân loại '+updated+' từ; '+unknown+' từ chưa xác định.');
+ }finally{btn.disabled=false;btn.textContent='🏷 Phân loại lại từ cũ';renderVocab()}
+}
+$('vocabBackfillBtn').addEventListener('click',()=>backfillVocabGrammar().catch(e=>toast('Không thể phân loại: '+e.message)));
 $('vocabSearch').addEventListener('input',renderVocab);
 $('vocabPeriod').addEventListener('change',vocabConfigurePeriod);
 $('vocabPos').addEventListener('change',renderVocab);
