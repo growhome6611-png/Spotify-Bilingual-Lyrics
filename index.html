@@ -690,42 +690,55 @@ async function restoreTranslationFromDrive(){
 async function restoreTranslationsSmart(){const local=restoreCachedTranslations();if(local){updateDriveStatus();return true;}const drive=await restoreTranslationFromDrive();return drive;}
 async function syncDriveNow(){if(!driveTokenValid()){connectGoogleDrive();return;}if(hasAnyTranslation())await uploadCurrentTranslationToDrive();else await restoreTranslationFromDrive();await verifyDriveSync();}
 
-// V13.5: dictionary POS from lexical API, preserving translation and offline behavior.
+// V13.6: normalize colloquial forms, context-sensitive POS, offline fallbacks and cache.
 let currentDictInfo=null,dictRequestId=0;
 const DICT_POS_MAP={noun:'noun',verb:'verb',adjective:'adjective',adverb:'adverb',pronoun:'pronoun',preposition:'preposition',conjunction:'conjunction',interjection:'interjection',determiner:'adjective',exclamation:'interjection'};
+const DICT_COLLOQUIAL={wanna:{lemma:'want',pos:'verb',expansion:'want to'},gonna:{lemma:'go',pos:'verb',expansion:'going to'},gotta:{lemma:'have',pos:'verb',expansion:'have got to'},lemme:{lemma:'let',pos:'verb',expansion:'let me'},gimme:{lemma:'give',pos:'verb',expansion:'give me'},kinda:{lemma:'kind',pos:'adverb',expansion:'kind of'},sorta:{lemma:'sort',pos:'adverb',expansion:'sort of'},"ain't":{lemma:'be',pos:'verb',expansion:'am/is/are not'},imma:{lemma:'go',pos:'verb',expansion:'I am going to'},dunno:{lemma:'know',pos:'verb',expansion:'do not know'},outta:{lemma:'out',pos:'preposition',expansion:'out of'},coulda:{lemma:'could',pos:'verb',expansion:'could have'},shoulda:{lemma:'should',pos:'verb',expansion:'should have'},woulda:{lemma:'would',pos:'verb',expansion:'would have'},ya:{lemma:'you',pos:'pronoun',expansion:'you'}};
+const DICT_IRREGULAR={went:'go',gone:'go',sang:'sing',sung:'sing',ran:'run',saw:'see',seen:'see',felt:'feel',fell:'fall',fallen:'fall',knew:'know',known:'know',took:'take',taken:'take',gave:'give',given:'give',made:'make',brought:'bring',thought:'think',caught:'catch',bought:'buy',wrote:'write',written:'write',spoke:'speak',spoken:'speak',was:'be',were:'be',been:'be',had:'have',did:'do'};
+const dictCache=new Map();
+function dictContextPos(types,word,context){
+ const t=String(context||'').toLowerCase(),w=String(word||'').toLowerCase(),escaped=w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+ const match=t.match(new RegExp('(?:^|\\W)([a-z]+)\\s+'+escaped+'(?=\\W|$)'));
+ const before=match?.[1]||'';
+ if(types.includes('verb')&&(/^(i|you|we|they|he|she|it|to|will|would|can|could|should|did|does|do|am|is|are|was|were|have|has|had|be|been|being|not|never)$/i.test(before)||/ed$|ing$/.test(w)))return 'verb';
+ if(types.includes('noun')&&/^(a|an|the|my|your|his|her|our|their|this|that)$/i.test(before))return 'noun';
+ if(types.includes('adjective')&&/^(very|so|too|more|most|quite)$/i.test(before))return 'adjective';
+ return types[0];
+}
 async function fetchWordGrammar(word,context=''){
-  const clean=String(word||'').toLowerCase().replace(/[^a-z' -]/g,'').trim();
-  if(!clean)return null;
-  const candidates=[clean];
-  if(clean.endsWith('ied'))candidates.push(clean.slice(0,-3)+'y');
-  if(clean.endsWith('ed'))candidates.push(clean.slice(0,-1),clean.slice(0,-2));
-  if(clean.endsWith('ing'))candidates.push(clean.slice(0,-3)+'e',clean.slice(0,-3));
-  if(clean.endsWith('ies'))candidates.push(clean.slice(0,-3)+'y');
-  if(clean.endsWith('es'))candidates.push(clean.slice(0,-2),clean.slice(0,-1));
-  if(clean.endsWith('s'))candidates.push(clean.slice(0,-1));
-  for(const lemma of [...new Set(candidates.filter(Boolean))]){
-    try{
-      const res=await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/'+encodeURIComponent(lemma));
-      if(!res.ok)continue;
-      const data=await res.json(),entries=Array.isArray(data)?data:[];
-      const types=[...new Set(entries.flatMap(e=>(e.meanings||[]).map(m=>DICT_POS_MAP[m.partOfSpeech]).filter(Boolean)))];
-      if(!types.length)continue;
-      const phonetic=entries.map(e=>e.phonetic||e.phonetics?.find(x=>x.text)?.text).find(Boolean)||'';
-      const lower=String(context||'').toLowerCase(),idx=lower.indexOf(clean),before=idx>=0?lower.slice(Math.max(0,idx-24),idx).trim().split(/\s+/).pop():'';
-      let selected=types[0];
-      if(types.includes('verb')&&(/^(i|you|we|they|he|she|it|to|will|would|can|could|should|did|does|do|am|is|are|was|were|have|has|had|be|been|being|not)$/i.test(before)||/ed$|ing$/.test(clean)))selected='verb';
-      else if(types.includes('noun')&&/^(a|an|the|my|your|his|her|our|their)$/i.test(before))selected='noun';
-      return {pos:selected,alternatives:types,lemma,phonetic,source:'Free Dictionary API'};
-    }catch(e){console.warn('Dictionary lookup:',e.message);break;}
+ const clean=String(word||'').toLowerCase().replace(/[^a-z' -]/g,'').trim();if(!clean)return null;
+ const slang=DICT_COLLOQUIAL[clean];
+ const candidates=[...(slang?[slang.lemma]:[]),...(DICT_IRREGULAR[clean]?[DICT_IRREGULAR[clean]]:[]),clean];
+ if(clean.endsWith('ied'))candidates.push(clean.slice(0,-3)+'y');
+ if(clean.endsWith('ed'))candidates.push(clean.slice(0,-1),clean.slice(0,-2));
+ if(clean.endsWith('ing'))candidates.push(clean.slice(0,-3)+'e',clean.slice(0,-3));
+ if(clean.endsWith('ies'))candidates.push(clean.slice(0,-3)+'y');
+ if(clean.endsWith('es'))candidates.push(clean.slice(0,-2),clean.slice(0,-1));
+ if(clean.endsWith('s'))candidates.push(clean.slice(0,-1));
+ const fallback=slang?{pos:slang.pos,alternatives:[slang.pos],lemma:slang.lemma,phonetic:'',expansion:slang.expansion,source:'Quy tắc dạng nói thân mật'}:null;
+ for(const lemma of [...new Set(candidates.filter(Boolean))]){
+  let entry=dictCache.get(lemma);
+  if(entry===undefined){
+   try{const res=await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/'+encodeURIComponent(lemma));
+    if(!res.ok){dictCache.set(lemma,null);continue;}
+    const data=await res.json(),entries=Array.isArray(data)?data:[];
+    const types=[...new Set(entries.flatMap(e=>(e.meanings||[]).map(m=>DICT_POS_MAP[m.partOfSpeech]).filter(Boolean)))];
+    const phonetic=entries.map(e=>e.phonetic||e.phonetics?.find(x=>x.text)?.text).find(Boolean)||'';
+    entry=types.length?{types,phonetic}:null;dictCache.set(lemma,entry);
+   }catch(e){console.warn('Dictionary lookup:',e.message);return fallback;}
   }
-  return null;
+  if(!entry)continue;
+  const selected=slang?.pos||(DICT_IRREGULAR[clean]?'verb':dictContextPos(entry.types,clean,context));
+  return {pos:selected,alternatives:entry.types.includes(selected)?entry.types:[selected,...entry.types],lemma,phonetic:entry.phonetic,expansion:slang?.expansion||'',source:'Free Dictionary API + ngữ cảnh'};
+ }
+ return fallback;
 }
 async function lookupWord(word){
   if(!word)return;
   const request=++dictRequestId,context=lyrics[activeIndex]?.text||'';
   currentDictInfo=null;$('dictWord').textContent=word;$('dictMeaning').textContent='Đang tra…';$('dictGrammar').textContent='Đang xác định loại từ…';
   $('dictPopup').classList.add('open');$('saveDictWordBtn').textContent='＋ Lưu từ vựng';
-  const grammar=fetchWordGrammar(word,context).then(info=>{if(request!==dictRequestId)return;currentDictInfo=info;$('dictGrammar').textContent=info?'Loại từ: '+(VOCAB_POS[info.pos]||'Chưa xác định')+(info.lemma!==word.toLowerCase()?' · Từ gốc: '+info.lemma:'')+(info.phonetic?' · '+info.phonetic:'')+(info.alternatives.length>1?' · Có thể là: '+info.alternatives.map(x=>VOCAB_POS[x]).join(', '):''):'Loại từ: chưa xác định (có thể sửa thủ công)';});
+  const grammar=fetchWordGrammar(word,context).then(info=>{if(request!==dictRequestId)return;currentDictInfo=info;$('dictGrammar').textContent=info?'Loại từ: '+(VOCAB_POS[info.pos]||'Chưa xác định')+(info.expansion?' · Dạng đầy đủ: '+info.expansion:'')+(info.lemma!==word.toLowerCase()?' · Từ gốc: '+info.lemma:'')+(info.phonetic?' · '+info.phonetic:'')+(info.alternatives.length>1?' · Có thể là: '+info.alternatives.map(x=>VOCAB_POS[x]).join(', '):''):'Loại từ: chưa xác định (có thể sửa thủ công)';});
   const meaning=googleTranslate([word],$('targetLang').value).then(out=>{if(request!==dictRequestId)return;$('dictMeaning').innerHTML='Nghĩa: <b>'+esc(out[0]||'')+'</b>';}).catch(e=>{if(request===dictRequestId)$('dictMeaning').textContent=e.message;});
   await Promise.allSettled([grammar,meaning]);
 }
@@ -1099,7 +1112,7 @@ function putVocab(items,autoSync=true){try{localStorage.setItem(VOCAB_STORAGE,JS
 function vocabPosGuess(word){const w=String(word||'').trim();if(w.includes(' '))return 'phrase';return 'other'}
 function vocabStatus(msg){const el=$('vocabSyncStatus');if(el)el.textContent=msg}
 function scheduleVocabSync(){clearTimeout(vocabSyncTimer);vocabSyncTimer=setTimeout(()=>syncVocabDrive().catch(e=>vocabStatus('Chưa đồng bộ: '+e.message)),1800)}
-function saveLookedUpWord(){const word=$('dictWord').textContent.trim();if(!word)return;const meaning=$('dictMeaning').textContent.replace(/^Nghĩa:\s*/i,'').trim();if(!meaning||meaning==='Đang tra…'){toast('Vui lòng đợi kết quả tra từ.');return}const items=getVocab(),lang=$('targetLang').value;const key=word.toLocaleLowerCase()+'|'+lang;const song=typeof currentSongMeta==='function'?currentSongMeta():{title:'',artist:''};const line=lyrics[activeIndex]?.text||'';const now=new Date().toISOString();const i=items.findIndex(x=>x.id===key);const entry={id:key,word,meaning,lang,song:song.title||'',artist:song.artist||'',context:line,savedAt:i>=0?(items[i].savedAt||now):now,updatedAt:now,pos:i>=0&&items[i].pos&&items[i].pos!=='other'?items[i].pos:(currentDictInfo?.pos||vocabPosGuess(word)),lemma:currentDictInfo?.lemma||items[i]?.lemma||word.toLowerCase(),phonetic:currentDictInfo?.phonetic||items[i]?.phonetic||'',posAlternatives:currentDictInfo?.alternatives||items[i]?.posAlternatives||[]};if(i>=0)items[i]={...items[i],...entry,deletedAt:null};else items.unshift(entry);if(putVocab(items)){$('saveDictWordBtn').textContent='✓ Đã lưu';toast('Đã lưu từ: '+word)}}
+function saveLookedUpWord(){const word=$('dictWord').textContent.trim();if(!word)return;const meaning=$('dictMeaning').textContent.replace(/^Nghĩa:\s*/i,'').trim();if(!meaning||meaning==='Đang tra…'){toast('Vui lòng đợi kết quả tra từ.');return}const items=getVocab(),lang=$('targetLang').value;const key=word.toLocaleLowerCase()+'|'+lang;const song=typeof currentSongMeta==='function'?currentSongMeta():{title:'',artist:''};const line=lyrics[activeIndex]?.text||'';const now=new Date().toISOString();const i=items.findIndex(x=>x.id===key);const entry={id:key,word,meaning,lang,song:song.title||'',artist:song.artist||'',context:line,savedAt:i>=0?(items[i].savedAt||now):now,updatedAt:now,pos:i>=0&&items[i].pos&&items[i].pos!=='other'?items[i].pos:(currentDictInfo?.pos||vocabPosGuess(word)),lemma:currentDictInfo?.lemma||items[i]?.lemma||word.toLowerCase(),phonetic:currentDictInfo?.phonetic||items[i]?.phonetic||'',expansion:currentDictInfo?.expansion||items[i]?.expansion||'',posAlternatives:currentDictInfo?.alternatives||items[i]?.posAlternatives||[]};if(i>=0)items[i]={...items[i],...entry,deletedAt:null};else items.unshift(entry);if(putVocab(items)){$('saveDictWordBtn').textContent='✓ Đã lưu';toast('Đã lưu từ: '+word)}}
 function vocabDateLocal(value){const d=new Date(value);if(!Number.isFinite(d.getTime()))return null;return new Date(d.getFullYear(),d.getMonth(),d.getDate())}
 function vocabWeekStart(d){const t=new Date(d.getFullYear(),d.getMonth(),d.getDate());t.setDate(t.getDate()-(t.getDay()+6)%7);return t}
 function vocabDateMatch(x){const p=$('vocabPeriod').value;if(p==='all')return true;const d=vocabDateLocal(x.savedAt);if(!d)return false;const now=new Date(),today=new Date(now.getFullYear(),now.getMonth(),now.getDate());if(p==='today')return d.getTime()===today.getTime();if(p==='week')return d>=vocabWeekStart(today)&&d<new Date(vocabWeekStart(today).getTime()+7*86400000);if(p==='month')return d.getFullYear()===today.getFullYear()&&d.getMonth()===today.getMonth();if(p==='year')return d.getFullYear()===today.getFullYear();if(p==='customyear'){const year=Number($('vocabFrom').value);return !year||d.getFullYear()===year}if(p==='customweek'){const v=$('vocabFrom').value;if(!v)return true;const parts=v.split('-W');const year=Number(parts[0]),week=Number(parts[1]);if(!year||!week)return true;const jan4=new Date(year,0,4);const monday=vocabWeekStart(jan4);monday.setDate(monday.getDate()+(week-1)*7);return d>=monday&&d<new Date(monday.getTime()+7*86400000)}const from=$('vocabFrom').value,to=$('vocabTo').value;return (!from||d>=new Date(from+'T00:00:00'))&&(!to||d<=new Date(to+'T23:59:59'))}
@@ -1121,7 +1134,7 @@ async function backfillVocabGrammar(){
    // Re-read after network to preserve any newly saved words.
    items=getVocab();const at=items.findIndex(x=>x.id===item.id);
    if(at>=0&&(!items[at].pos||items[at].pos==='other')){
-    items[at]={...items[at],pos:info.pos,lemma:info.lemma,phonetic:info.phonetic,posAlternatives:info.alternatives,updatedAt:new Date().toISOString()};
+    items[at]={...items[at],pos:info.pos,lemma:info.lemma,phonetic:info.phonetic,posAlternatives:info.alternatives,expansion:info.expansion||'',updatedAt:new Date().toISOString()};
     putVocab(items,false);updated++;
    }
   }
