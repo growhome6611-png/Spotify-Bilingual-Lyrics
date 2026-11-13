@@ -421,7 +421,87 @@ body > header{display:none!important}
 <div class="popup" id="dictPopup"><button class="close-x" id="closePopup">×</button><div class="popup-title" id="dictWord"></div><div class="popup-body" id="dictMeaning">Đang tra...</div><div id="dictPronounce"></div><div id="dictGrammar" style="color:#a6dfb9;font-size:.86rem;margin-top:8px"></div><button class="btn primary" id="saveDictWordBtn" type="button" style="margin-top:12px;width:100%">＋ Lưu từ vựng</button></div>
 <div class="toast" id="toast"></div>
 
-<script src="https://accounts.google.com/gsi/client" async defer>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://sdk.scdn.co/spotify-player.js"></script>
+<script>
+
+
+
+
+'use strict';
+const $ = id => document.getElementById(id);
+const LS = {
+  client:'spotify_client_id', google:'google_translate_api_key', access:'spotify_access_token_v2', refresh:'spotify_refresh_token_v2', expires:'spotify_token_expires_at_v2', verifier:'spotify_pkce_verifier', state:'spotify_oauth_state', lang:'spotify_translation_lang', gclient:'google_drive_client_id', gtoken:'google_drive_access_token', gexp:'google_drive_token_expires_at', gfolder:'google_drive_folder_id'
+};
+let spotifyClientId = localStorage.getItem(LS.client) || '';
+let googleApiKey = localStorage.getItem(LS.google) || '';
+let googleClientId = localStorage.getItem(LS.gclient) || '';
+let googleDriveToken = localStorage.getItem(LS.gtoken) || '';
+let googleDriveExpiresAt = Number(localStorage.getItem(LS.gexp) || 0);
+let googleDriveFolderId = localStorage.getItem(LS.gfolder) || '';
+let googleTokenClient = null;
+let accessToken = localStorage.getItem(LS.access) || '';
+let refreshToken = localStorage.getItem(LS.refresh) || '';
+let expiresAt = Number(localStorage.getItem(LS.expires) || 0);
+let lyrics = [], lastTrackId = '', currentTrackKey = '', pollTimer = null, activeIndex = -1, isPlaying = false;
+let progressAnchorMs = 0, progressAnchorAt = 0;
+let webPlayer=null, webDeviceId='', playerReady=false, playerDurationMs=0, playerPositionMs=0, playerTrackUri='', playerStateTimer=null;
+let activePlaybackDeviceId='', activePlaybackIsWeb=false, lastPlaybackPollAt=0;
+const translationCache = new Map();
+
+function redirectUri(){ return location.origin + location.pathname; }
+function toast(msg){ const el=$('toast'); el.textContent=msg; el.classList.add('show'); clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('show'),2600); }
+function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function decodeHtml(s){ const t=document.createElement('textarea'); t.innerHTML=s; return t.value; }
+function randomString(n=64){ const chars='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'; const bytes=crypto.getRandomValues(new Uint8Array(n)); return Array.from(bytes,b=>chars[b%chars.length]).join(''); }
+async function sha256(text){ return crypto.subtle.digest('SHA-256',new TextEncoder().encode(text)); }
+function base64url(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+
+async function spotifyLogin(){
+  if(!spotifyClientId){ openSettings(); toast('Hãy nhập Spotify Client ID trước.'); return; }
+  if(location.protocol==='file:'){ toast('Spotify đăng nhập cần chạy qua HTTPS/localhost, không mở trực tiếp file HTML.'); return; }
+  const verifier=randomString(72), challenge=base64url(await sha256(verifier)), state=randomString(24);
+  localStorage.setItem(LS.verifier,verifier); localStorage.setItem(LS.state,state);
+  const p=new URLSearchParams({client_id:spotifyClientId,response_type:'code',redirect_uri:redirectUri(),scope:'streaming user-read-email user-read-private user-read-currently-playing user-read-playback-state user-modify-playback-state user-library-read user-library-modify user-follow-read playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public',code_challenge_method:'S256',code_challenge:challenge,state});
+  location.href='https://accounts.spotify.com/authorize?'+p.toString();
+}
+async function exchangeCode(code){
+  const verifier=localStorage.getItem(LS.verifier); if(!verifier) throw new Error('Thiếu PKCE verifier');
+  const body=new URLSearchParams({client_id:spotifyClientId,grant_type:'authorization_code',code,redirect_uri:redirectUri(),code_verifier:verifier});
+  const res=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
+  const data=await res.json(); if(!res.ok) throw new Error(data.error_description||data.error||'Không lấy được token'); saveTokens(data);
+}
+function saveTokens(data){ accessToken=data.access_token||accessToken; if(data.refresh_token) refreshToken=data.refresh_token; expiresAt=Date.now()+((data.expires_in||3600)-60)*1000; localStorage.setItem(LS.access,accessToken); if(refreshToken)localStorage.setItem(LS.refresh,refreshToken); localStorage.setItem(LS.expires,String(expiresAt)); }
+async function ensureToken(){
+  if(accessToken && Date.now()<expiresAt) return accessToken;
+  if(!refreshToken) return accessToken||'';
+  const body=new URLSearchParams({client_id:spotifyClientId,grant_type:'refresh_token',refresh_token:refreshToken});
+  const res=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body}); const data=await res.json(); if(!res.ok) throw new Error('Không thể làm mới Spotify token'); saveTokens(data); return accessToken;
+}
+function logoutSpotify(){ if(webPlayer){try{webPlayer.disconnect()}catch(_){ }webPlayer=null;webDeviceId='';setPlayerReadyUI(false);} playlistsCache=[]; [LS.access,LS.refresh,LS.expires,LS.verifier,LS.state].forEach(k=>localStorage.removeItem(k)); accessToken='';refreshToken='';expiresAt=0;lastTrackId='';clearInterval(pollTimer);pollTimer=null;updateLoginUI(); $('trackTitle').textContent='Đã ngắt kết nối Spotify';$('trackArtist').textContent='';$('syncStatus').textContent='[Chưa kết nối]'; }
+function updateLoginUI(){ const b=$('loginBtn'); const compact=window.innerWidth<=640; b.dataset.connected=(accessToken||refreshToken)?'true':'false'; if(accessToken||refreshToken){b.textContent=compact?'🟢 Đã kết nối':'🟢 Spotify đã kết nối';b.title='Bấm để ngắt kết nối';}else{b.textContent=compact?'🔗 Kết nối':'🔗 Kết nối Spotify';b.title='';} }
+
+async function fetchCurrentlyPlaying(force=false){
+  try{
+    const token=await ensureToken(); if(!token) return;
+    const res=await fetch('https://api.spotify.com/v1/me/player/currently-playing',{headers:{Authorization:'Bearer '+token}});
+    if(res.status===401){ accessToken='';expiresAt=0;localStorage.removeItem(LS.access); if(refreshToken){await ensureToken();return fetchCurrentlyPlaying(force);} logoutSpotify();return; }
+    if(res.status===204){isPlaying=false;playerDurationMs=0;playerPositionMs=0;renderProgressUI(0,0);$('trackTitle').textContent='Không có bài hát nào đang phát';$('trackArtist').textContent='Mở Spotify và phát một bài hát';$('syncStatus').textContent='[Đang chờ]';return;}
+    if(!res.ok) throw new Error('Spotify HTTP '+res.status);
+    const d=await res.json(); if(!d.item) return;
+    const name=d.item.name||'', artist=(d.item.artists||[]).map(a=>a.name).join(', '), id=d.item.id||d.item.uri, album=d.item.album?.name||'', cover=d.item.album?.images?.[1]?.url||d.item.album?.images?.[0]?.url||'';
+    $('trackTitle').textContent=name;$('trackArtist').textContent=artist+(album?' • '+album:'');if(cover)$('cover').src=cover;$('playerTitle').textContent=name;$('playerArtist').textContent=artist;if(cover)$('playerCover').src=cover;updateFullLyricsMeta();
+    isPlaying=!!d.is_playing;progressAnchorMs=Number(d.progress_ms)||0;progressAnchorAt=Date.now();
+    playerPositionMs=progressAnchorMs;playerDurationMs=Number(d.item.duration_ms)||0;playerTrackUri=d.item.uri||'';lastPlaybackPollAt=Date.now();
+    activePlaybackDeviceId=d.device?.id||'';activePlaybackIsWeb=!!webDeviceId&&activePlaybackDeviceId===webDeviceId;
+    renderProgressUI(playerPositionMs,playerDurationMs);$('playPauseBtn').textContent=isPlaying?'❚❚':'▶';$('playPauseBtn').disabled=false;$('prevBtn').disabled=false;$('nextBtn').disabled=false;
+    if(force||id!==lastTrackId){ lastTrackId=id; refreshLikeState(d.item.id); currentTrackKey=id||name+'|'+artist; await fetchLyrics(name,artist,album,d.item.duration_ms||0); }
+    syncLyrics(getEstimatedProgress()/1000);
+  }catch(e){ console.error(e);$('syncStatus').textContent='[Lỗi kết nối Spotify]'; }
+}
+function getEstimatedProgress(){ return progressAnchorMs+(isPlaying?(Date.now()-progressAnchorAt):0); }
+function startPolling(){ if(pollTimer)clearInterval(pollTimer); fetchCurrentlyPlaying(true); pollTimer=setInterval(()=>fetchCurrentlyPlaying(false),3500); setInterval(()=>syncLyrics(getEstimatedProgress()/1000),500); }
+
 // V14.1: learning mode for lyrics already available to this user.
 const STUDY_PREF_KEY='sbl_v141_study_prefs';
 let studyIndex=0,studyTab='learn',studyQuizAnswer='',studyLoopBusy=false,studyLoopTrack='',studyLoopLast=0;
@@ -498,91 +578,13 @@ setInterval(()=>{
  const position=getEstimatedProgress()/1000;
  if(position>=b.time-.12&&Date.now()-studyLoopLast>1400){studyLoopBusy=true;studyLoopLast=Date.now();seekSpotifyPosition(Math.round(a.time*1000)).finally(()=>{studyLoopBusy=false});}
 },350);
-
-</script>
-<script src="https://sdk.scdn.co/spotify-player.js"></script>
-<script>
-'use strict';
-const $ = id => document.getElementById(id);
-const LS = {
-  client:'spotify_client_id', google:'google_translate_api_key', access:'spotify_access_token_v2', refresh:'spotify_refresh_token_v2', expires:'spotify_token_expires_at_v2', verifier:'spotify_pkce_verifier', state:'spotify_oauth_state', lang:'spotify_translation_lang', gclient:'google_drive_client_id', gtoken:'google_drive_access_token', gexp:'google_drive_token_expires_at', gfolder:'google_drive_folder_id'
-};
-let spotifyClientId = localStorage.getItem(LS.client) || '';
-let googleApiKey = localStorage.getItem(LS.google) || '';
-let googleClientId = localStorage.getItem(LS.gclient) || '';
-let googleDriveToken = localStorage.getItem(LS.gtoken) || '';
-let googleDriveExpiresAt = Number(localStorage.getItem(LS.gexp) || 0);
-let googleDriveFolderId = localStorage.getItem(LS.gfolder) || '';
-let googleTokenClient = null;
-let accessToken = localStorage.getItem(LS.access) || '';
-let refreshToken = localStorage.getItem(LS.refresh) || '';
-let expiresAt = Number(localStorage.getItem(LS.expires) || 0);
-let lyrics = [], lastTrackId = '', currentTrackKey = '', pollTimer = null, activeIndex = -1, isPlaying = false;
-let progressAnchorMs = 0, progressAnchorAt = 0;
-let webPlayer=null, webDeviceId='', playerReady=false, playerDurationMs=0, playerPositionMs=0, playerTrackUri='', playerStateTimer=null;
-let activePlaybackDeviceId='', activePlaybackIsWeb=false, lastPlaybackPollAt=0;
-const translationCache = new Map();
-
-function redirectUri(){ return location.origin + location.pathname; }
-function toast(msg){ const el=$('toast'); el.textContent=msg; el.classList.add('show'); clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('show'),2600); }
-function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function decodeHtml(s){ const t=document.createElement('textarea'); t.innerHTML=s; return t.value; }
-function randomString(n=64){ const chars='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'; const bytes=crypto.getRandomValues(new Uint8Array(n)); return Array.from(bytes,b=>chars[b%chars.length]).join(''); }
-async function sha256(text){ return crypto.subtle.digest('SHA-256',new TextEncoder().encode(text)); }
-function base64url(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
-
-async function spotifyLogin(){
-  if(!spotifyClientId){ openSettings(); toast('Hãy nhập Spotify Client ID trước.'); return; }
-  if(location.protocol==='file:'){ toast('Spotify đăng nhập cần chạy qua HTTPS/localhost, không mở trực tiếp file HTML.'); return; }
-  const verifier=randomString(72), challenge=base64url(await sha256(verifier)), state=randomString(24);
-  localStorage.setItem(LS.verifier,verifier); localStorage.setItem(LS.state,state);
-  const p=new URLSearchParams({client_id:spotifyClientId,response_type:'code',redirect_uri:redirectUri(),scope:'streaming user-read-email user-read-private user-read-currently-playing user-read-playback-state user-modify-playback-state user-library-read user-library-modify user-follow-read playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public',code_challenge_method:'S256',code_challenge:challenge,state});
-  location.href='https://accounts.spotify.com/authorize?'+p.toString();
-}
-async function exchangeCode(code){
-  const verifier=localStorage.getItem(LS.verifier); if(!verifier) throw new Error('Thiếu PKCE verifier');
-  const body=new URLSearchParams({client_id:spotifyClientId,grant_type:'authorization_code',code,redirect_uri:redirectUri(),code_verifier:verifier});
-  const res=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
-  const data=await res.json(); if(!res.ok) throw new Error(data.error_description||data.error||'Không lấy được token'); saveTokens(data);
-}
-function saveTokens(data){ accessToken=data.access_token||accessToken; if(data.refresh_token) refreshToken=data.refresh_token; expiresAt=Date.now()+((data.expires_in||3600)-60)*1000; localStorage.setItem(LS.access,accessToken); if(refreshToken)localStorage.setItem(LS.refresh,refreshToken); localStorage.setItem(LS.expires,String(expiresAt)); }
-async function ensureToken(){
-  if(accessToken && Date.now()<expiresAt) return accessToken;
-  if(!refreshToken) return accessToken||'';
-  const body=new URLSearchParams({client_id:spotifyClientId,grant_type:'refresh_token',refresh_token:refreshToken});
-  const res=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body}); const data=await res.json(); if(!res.ok) throw new Error('Không thể làm mới Spotify token'); saveTokens(data); return accessToken;
-}
-function logoutSpotify(){ if(webPlayer){try{webPlayer.disconnect()}catch(_){ }webPlayer=null;webDeviceId='';setPlayerReadyUI(false);} playlistsCache=[]; [LS.access,LS.refresh,LS.expires,LS.verifier,LS.state].forEach(k=>localStorage.removeItem(k)); accessToken='';refreshToken='';expiresAt=0;lastTrackId='';clearInterval(pollTimer);pollTimer=null;updateLoginUI(); $('trackTitle').textContent='Đã ngắt kết nối Spotify';$('trackArtist').textContent='';$('syncStatus').textContent='[Chưa kết nối]'; }
-function updateLoginUI(){ const b=$('loginBtn'); const compact=window.innerWidth<=640; b.dataset.connected=(accessToken||refreshToken)?'true':'false'; if(accessToken||refreshToken){b.textContent=compact?'🟢 Đã kết nối':'🟢 Spotify đã kết nối';b.title='Bấm để ngắt kết nối';}else{b.textContent=compact?'🔗 Kết nối':'🔗 Kết nối Spotify';b.title='';} }
-
-async function fetchCurrentlyPlaying(force=false){
-  try{
-    const token=await ensureToken(); if(!token) return;
-    const res=await fetch('https://api.spotify.com/v1/me/player/currently-playing',{headers:{Authorization:'Bearer '+token}});
-    if(res.status===401){ accessToken='';expiresAt=0;localStorage.removeItem(LS.access); if(refreshToken){await ensureToken();return fetchCurrentlyPlaying(force);} logoutSpotify();return; }
-    if(res.status===204){isPlaying=false;playerDurationMs=0;playerPositionMs=0;renderProgressUI(0,0);$('trackTitle').textContent='Không có bài hát nào đang phát';$('trackArtist').textContent='Mở Spotify và phát một bài hát';$('syncStatus').textContent='[Đang chờ]';return;}
-    if(!res.ok) throw new Error('Spotify HTTP '+res.status);
-    const d=await res.json(); if(!d.item) return;
-    const name=d.item.name||'', artist=(d.item.artists||[]).map(a=>a.name).join(', '), id=d.item.id||d.item.uri, album=d.item.album?.name||'', cover=d.item.album?.images?.[1]?.url||d.item.album?.images?.[0]?.url||'';
-    $('trackTitle').textContent=name;$('trackArtist').textContent=artist+(album?' • '+album:'');if(cover)$('cover').src=cover;$('playerTitle').textContent=name;$('playerArtist').textContent=artist;if(cover)$('playerCover').src=cover;updateFullLyricsMeta();
-    isPlaying=!!d.is_playing;progressAnchorMs=Number(d.progress_ms)||0;progressAnchorAt=Date.now();
-    playerPositionMs=progressAnchorMs;playerDurationMs=Number(d.item.duration_ms)||0;playerTrackUri=d.item.uri||'';lastPlaybackPollAt=Date.now();
-    activePlaybackDeviceId=d.device?.id||'';activePlaybackIsWeb=!!webDeviceId&&activePlaybackDeviceId===webDeviceId;
-    renderProgressUI(playerPositionMs,playerDurationMs);$('playPauseBtn').textContent=isPlaying?'❚❚':'▶';$('playPauseBtn').disabled=false;$('prevBtn').disabled=false;$('nextBtn').disabled=false;
-    if(force||id!==lastTrackId){ lastTrackId=id; refreshLikeState(d.item.id); currentTrackKey=id||name+'|'+artist; await fetchLyrics(name,artist,album,d.item.duration_ms||0); }
-    syncLyrics(getEstimatedProgress()/1000);
-  }catch(e){ console.error(e);$('syncStatus').textContent='[Lỗi kết nối Spotify]'; }
-}
-function getEstimatedProgress(){ return progressAnchorMs+(isPlaying?(Date.now()-progressAnchorAt):0); }
-function startPolling(){ if(pollTimer)clearInterval(pollTimer); fetchCurrentlyPlaying(true); pollTimer=setInterval(()=>fetchCurrentlyPlaying(false),3500); setInterval(()=>syncLyrics(getEstimatedProgress()/1000),500); }
-
 function lyricName(s){return String(s||'').normalize('NFKC').replace(/\s*[\(\[]\s*(?:remaster(?:ed)?|live|radio edit|mono|stereo|deluxe|version|edit|feat\.?|ft\.?)[^\)\]]*[\)\]]/gi,'').replace(/\s+-\s+(?:remaster(?:ed)?|live|radio edit|mono|stereo|.*version).*$/gi,'').replace(/\s+/g,' ').trim();}
 function lyricMatch(x,track,artist,durationMs){
- const norm=v=>String(v||'').toLocaleLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
+ const norm=v=>String(v||'').toLocaleLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
  const t=norm(lyricName(track)), a=norm(artist), xt=norm(lyricName(x.trackName)), xa=norm(x.artistName);
- let score=0; if(xt===t)score+=80;else if(xt.includes(t)||t.includes(xt))score+=35;
- if(xa===a)score+=65;else if(xa.includes(a)||a.includes(xa))score+=30;
- if(durationMs&&x.duration){const diff=Math.abs(Number(x.duration)*1000-durationMs)/1000;score+=diff<=3?30:diff<=10?15:diff>25?-35:0;}
+ let score=0; if(t&&xt===t)score+=80;else if(t&&xt&&(xt.includes(t)||t.includes(xt)))score+=35;
+ if(a&&xa===a)score+=65;else if(a&&xa&&(xa.includes(a)||a.includes(xa)))score+=30;
+ if(durationMs&&x.duration){const diff=Math.abs(Number(x.duration)*1000-durationMs)/1000;score+=diff<=3?35:diff<=8?12:diff>18?-110:-20;}
  if(x.syncedLyrics)score+=12; if(x.plainLyrics)score+=3;return score;
 }
 async function lyricRequest(url){const ctl=new AbortController();const timer=setTimeout(()=>ctl.abort(),9000);try{const r=await fetch(url,{signal:ctl.signal});return r.ok?await r.json():null;}catch(e){return null;}finally{clearTimeout(timer);}}
@@ -604,7 +606,7 @@ function storeLyricSource(hit){
 function restoreLyricSource(){
  try{const hit=JSON.parse(localStorage.getItem(lyricSourceCacheKey())||'null');if(!hit)return false;
  storeLyricSource(hit);
- if(hit.syncedLyrics){parseLrc(hit.syncedLyrics);$('syncStatus').textContent='[Lời đồng bộ • đã lưu trên máy]';return true;}
+ storeLyricSource(hit);if(hit.syncedLyrics){parseLrc(hit.syncedLyrics);$('syncStatus').textContent='[Lời đồng bộ • đã lưu trên máy]';return true;}
  if(hit.plainLyrics){parsePlain(hit.plainLyrics);$('syncStatus').textContent='[Lời tĩnh • đã lưu trên máy]';return true;}
  }catch(e){console.warn('Lyric cache read:',e);}return false;
 }
@@ -623,14 +625,14 @@ async function fetchLyrics(track,artist,album,durationMs){
  {const u=new URL('https://lrclib.net/api/search');u.searchParams.set('q',(clean||track)+' '+artist.split(',')[0]);add(await lyricRequest(u));}
  if(!candidates.length){const u=new URL('https://lrclib.net/api/search');u.searchParams.set('q',clean||track);add(await lyricRequest(u));}
  const ranked=candidates.map(x=>({x,score:lyricMatch(x,track,artist,durationMs)})).sort((a,b)=>b.score-a.score);
- const hit=ranked[0]?.score>=65?ranked[0].x:null;
+ const best=ranked[0];const hit=best?.score>=125?best.x:null;
  if(!hit){$('lyrics').innerHTML=`<div class="empty">Không tìm thấy lời phù hợp cho <b>${esc(track)}</b> — ${esc(artist)}.<br>Spotify có thể có lời qua Musixmatch, nhưng không chia sẻ lời đó qua Spotify Web API. Hãy thử phiên bản khác hoặc nhập lời LRC/TXT hợp lệ.</div>`;$('syncStatus').textContent='[Không có lời phù hợp]';return;}
- if(hit.syncedLyrics){parseLrc(hit.syncedLyrics);$('syncStatus').textContent='[Đã đồng bộ lời • LRCLIB]';}else{parsePlain(hit.plainLyrics);$('syncStatus').textContent='[Lời tĩnh • LRCLIB]';}
+ storeLyricSource(hit);if(hit.syncedLyrics){parseLrc(hit.syncedLyrics);$('syncStatus').textContent='[Đã đồng bộ lời • LRCLIB]';}else{parsePlain(hit.plainLyrics);$('syncStatus').textContent='[Lời tĩnh • LRCLIB]';}
  await restoreTranslationsSmart();
 }
 
 function parseLrc(text){ const arr=[];const re=/\[(\d{1,3}):(\d{2})(?:\.(\d{1,3}))?\]\s*(.*)/; for(const raw of text.split(/\r?\n/)){const m=raw.match(re);if(!m)continue;const frac=m[3]?Number('0.'+m[3]):0;const t=Number(m[1])*60+Number(m[2])+frac;const val=m[4].trim();if(val)arr.push({time:t,text:val,translation:''});} lyrics=arr.sort((a,b)=>a.time-b.time);renderLyrics(); }
-function parsePlain(text){ lyrics=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).map((s,i)=>({time:i*5,text:s,translation:''}));renderLyrics(false); }
+function parsePlain(text){ lyrics=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).map(s=>({time:null,text:s,translation:''}));renderLyrics(false); }
 // V13.9: Chinese text uses word segmentation rather than whitespace splitting.
 const hasHan=text=>/[\u3400-\u9fff]/u.test(String(text||''));
 let pinyinVisible=localStorage.getItem('sbl_pinyin_visible')!=='false';
@@ -661,7 +663,7 @@ async function refreshPinyin(){
 function setPinyinVisible(){pinyinVisible=!pinyinVisible;localStorage.setItem('sbl_pinyin_visible',String(pinyinVisible));refreshPinyin();}
 function renderLyrics(synced=true){const box=$('lyrics');box.innerHTML='';lyrics.forEach((line,i)=>{const div=document.createElement('div');div.className='line';div.id='line-'+i;div.dataset.i=i;const words=lyricWordMarkup(line.text,'word');div.innerHTML=`<div class="original">${words}</div>${hasHan(line.text)?`<div class="lyric-pinyin" id="py-${i}" style="${pinyinVisible?'':'display:none'}"></div>`:''}<div class="translation" id="tr-${i}" style="${line.translation?'':'display:none'}">${esc(line.translation)}</div><div class="line-tools"><button class="tiny" data-translate="${i}">🌐 Dịch câu</button></div>`;box.appendChild(div);});if(lyrics.length){$('translateAllBtn').disabled=false;$('clearTransBtn').disabled=false;}renderFullLyrics();refreshPinyin();}
 function handleLyricsClick(e){ const w=e.target.closest('.word');if(w&&w.dataset.word){lookupWord(w.dataset.word);return;}const b=e.target.closest('[data-translate]');if(b)translateOne(Number(b.dataset.translate)); }
-function syncLyrics(sec){ if(!lyrics.length)return;let idx=-1;for(let i=0;i<lyrics.length;i++){if(sec>=lyrics[i].time)idx=i;else break;}if(idx===activeIndex||idx<0)return; if(activeIndex>=0)$('line-'+activeIndex)?.classList.remove('active');activeIndex=idx;const el=$('line-'+idx);if(el){el.classList.add('active');if(!fullLyricsOpen){const box=$('panel-now'); const target=Math.max(0,el.offsetTop-(box.clientHeight*0.72)); box.scrollTo({top:target,behavior:'smooth'});}} syncFullLyricsIndex(idx); }
+function syncLyrics(sec){ if(!lyrics.length||!lyrics.some(x=>Number.isFinite(x.time)))return;let idx=-1;for(let i=0;i<lyrics.length;i++){if(!Number.isFinite(lyrics[i].time))continue;if(sec>=lyrics[i].time)idx=i;else break;}if(idx===activeIndex||idx<0)return; if(activeIndex>=0)$('line-'+activeIndex)?.classList.remove('active');activeIndex=idx;const el=$('line-'+idx);if(el){el.classList.add('active');if(!fullLyricsOpen){const box=$('panel-now'); const target=Math.max(0,el.offsetTop-(box.clientHeight*0.72)); box.scrollTo({top:target,behavior:'smooth'});}} syncFullLyricsIndex(idx); }
 
 async function googleTranslate(q,target){
   if(!googleApiKey){openSettings();throw new Error('Chưa có Google Translate API Key');}
