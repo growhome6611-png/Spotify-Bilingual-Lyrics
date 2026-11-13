@@ -69,3 +69,9 @@ V13.9 - TIENG TRUNG / PINYIN
 - Thu vien pinyin-pro duoc tai tu CDN khi can (lan dau can Internet); ket qua luu localStorage.
 - Tra nghia tieng Trung sang tieng Viet; luu tu vung nhu phien ban cu.
 - Luu y: chua kiem thu OAuth/Spotify tren trinh duyet thuc; pinyin co the can chinh sua thu cong voi tu da am.
+
+V14.0 FAMILY GUIDE (5 NGUOI)
+- Them huong dan su dung gia dinh trong Cai dat, va tep FAMILY_SETUP.md.
+- Giu nguyen cac tinh nang V13.9; cap nhat service worker cache.
+- Moi thanh vien can dung thiet bi / ho so trinh duyet rieng de tranh lan du lieu localStorage.
+- Chua co he thong backend quan ly tai khoan rieng hoac phan quyen 5 nguoi.

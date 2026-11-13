@@ -349,6 +349,16 @@ body > header{display:none!important}
 
 <div class="modal" id="settingsModal"><div class="dialog">
   <h3>⚙️ Cài đặt</h3>
+  <div class="settings-drive-section" style="margin-top:8px;padding-top:10px"><h3>👨‍👩‍👧‍👦 Hướng dẫn dùng cho gia đình (5 người)</h3>
+    <p class="hint">Mỗi thành viên dùng thiết bị hoặc hồ sơ trình duyệt riêng, đăng nhập tài khoản Spotify và Google Drive của chính mình. Không chia sẻ mật khẩu hay mã truy cập.</p>
+    <details style="border:1px solid #363636;border-radius:10px;padding:10px;margin:10px 0;line-height:1.7"><summary style="cursor:pointer;font-weight:600">Xem các bước thiết lập</summary>
+      <ol style="padding-left:20px;margin:10px 0"><li>Chủ ứng dụng thêm tối đa 5 tài khoản Spotify (tính cả chủ ứng dụng) vào danh sách người dùng được phép trong Spotify Developer Dashboard.</li>
+      <li>Chủ ứng dụng cấu hình Spotify Client ID, Redirect URI và Google OAuth Web Client ID theo hướng dẫn FAMILY_SETUP.md.</li>
+      <li>Gửi đường dẫn HTTPS Vercel cho từng thành viên. Mỗi người mở trên điện thoại hoặc máy tính riêng.</li>
+      <li>Người dùng kết nối Spotify của mình, sau đó kết nối Google Drive riêng nếu cần đồng bộ từ vựng/bản dịch.</li>
+      <li>Trước khi đổi tài khoản trên cùng thiết bị, hãy sao lưu và đồng bộ dữ liệu, sau đó sử dụng hồ sơ trình duyệt khác để tránh lẫn dữ liệu cục bộ.</li></ol>
+      <p class="hint">Lưu ý: phiên bản này chưa có máy chủ quản lý 5 tài khoản hoặc cơ chế cách ly dữ liệu khi nhiều người dùng chung một hồ sơ trình duyệt. Giới hạn Spotify và Google OAuth vẫn áp dụng.</p>
+    </details></div>
   <div class="field"><button class="btn" id="settingsSpotifyBtn" type="button">🎵 Kết nối / Ngắt Spotify</button><span class="hint">Quản lý kết nối Spotify sau khi ẩn thanh tiêu đề.</span></div>
   <div class="field"><label>Spotify Client ID</label><input id="spotifyClientId" placeholder="Dán Client ID của Spotify Developer App" /></div>
   <div class="field"><label>Google Cloud Translation API Key</label><input id="googleApiKey" type="password" placeholder="Dán Google Translate API Key" /></div>
