@@ -175,6 +175,14 @@ body > header{display:none!important}
 .vocab-write-hint{color:#bbb;font-size:.88rem;margin:8px 0 12px}.vocab-write-progress{height:7px;border-radius:20px;background:#3b3b3b;overflow:hidden;margin:8px 0 14px}.vocab-write-progress span{display:block;height:100%;width:0;background:#1ed760;transition:width .2s}
 .vocab-write-rows{display:grid;gap:8px}.vocab-write-row{display:flex;align-items:center;gap:9px}.vocab-write-row label{width:25px;color:#aaa}.vocab-write-row input{flex:1;min-width:0;background:#262626;border:1px solid #4b4b4b;border-radius:9px;padding:11px;color:white;font-size:16px}.vocab-write-row .vocab-write-result{width:20px;text-align:center}
 .vocab-write-footer{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}.vocab-write-footer button{border:1px solid #444;border-radius:12px;background:#292929;color:white;padding:11px 16px;flex:1}.vocab-write-footer button:first-child{background:#1ed760;color:#111;font-weight:700}.vocab-write-status{margin-top:10px;color:#b4e9c5;font-size:.9rem}
+/* V13.9 Chinese word selection and toggleable pinyin */
+.pinyin-toggle{border:1px solid #32684a;background:#173022;color:#b3f0c6;border-radius:18px;padding:7px 11px;font-size:.84rem;cursor:pointer;white-space:nowrap}
+.pinyin-toggle[aria-pressed="false"]{background:#222;color:#aaa;border-color:#444}
+.lyric-pinyin{font-size:calc(.83rem * var(--lyric-scale));color:#e8c78c;line-height:1.55;margin:5px 0 4px;overflow-wrap:anywhere}
+.full-line .lyric-pinyin{font-size:calc(.88rem * var(--lyric-scale));font-weight:400;color:#e8c78c;margin:7px 0}
+.word,.full-word{cursor:pointer;touch-action:manipulation}
+.word:active,.full-word:active{color:#1ed760}
+#dictPronounce{font-size:.9rem;color:#e8c78c;margin-top:6px}
 </style>
 </head>
 <body>
@@ -236,6 +244,7 @@ body > header{display:none!important}
       <select id="targetLang" title="Ngôn ngữ dịch">
         <option value="vi">🇻🇳 Tiếng Việt</option><option value="zh-CN">🇨🇳 中文</option><option value="en">🇬🇧 English</option><option value="ja">🇯🇵 日本語</option><option value="ko">🇰🇷 한국어</option><option value="fr">🇫🇷 Français</option><option value="de">🇩🇪 Deutsch</option><option value="es">🇪🇸 Español</option><option value="th">🇹🇭 ไทย</option>
       </select>
+      <button class="pinyin-toggle" id="pinyinToggle" type="button" aria-pressed="true">拼 Pinyin ✓</button>
       <button class="btn" id="translateAllBtn" disabled>🌐 Dịch toàn bài</button>
       <button class="btn" id="clearTransBtn" disabled>Ẩn bản dịch</button>
       <button class="btn" id="refreshBtn">↻ Làm mới</button>
@@ -327,6 +336,7 @@ body > header{display:none!important}
     <button class="lyrics-more" id="lyricsMoreBtn" aria-label="Tùy chọn">⋮</button>
   </div>
   <div class="full-font-controls" role="group" aria-label="Cỡ chữ lời gốc và bản dịch"><button id="fullFontDownBtn" aria-label="Giảm cỡ chữ">A−</button><span id="fontSizeLabelFull">100%</span><button id="fullFontUpBtn" aria-label="Tăng cỡ chữ">A+</button></div>
+  <button class="pinyin-toggle" id="fullPinyinToggle" type="button" aria-pressed="true" style="position:absolute;right:14px;top:100px;z-index:3">拼 Pinyin ✓</button>
   <button class="lyrics-translate-chip" id="fullTranslateBtn">🌐 Dịch</button>
   <div class="lyrics-scroll" id="fullLyricsScroll"><div class="empty" style="color:rgba(255,255,255,.72)">Chưa có lời bài hát.</div></div>
   <div class="lyrics-bottom">
@@ -376,7 +386,7 @@ body > header{display:none!important}
   <div class="playlist-picker-list" id="playlistPickerList"></div>
   <div class="dialog-actions"><button class="btn" id="closePickerBtn">Đóng</button></div>
 </div></div>
-<div class="popup" id="dictPopup"><button class="close-x" id="closePopup">×</button><div class="popup-title" id="dictWord"></div><div class="popup-body" id="dictMeaning">Đang tra...</div><div id="dictGrammar" style="color:#a6dfb9;font-size:.86rem;margin-top:8px"></div><button class="btn primary" id="saveDictWordBtn" type="button" style="margin-top:12px;width:100%">＋ Lưu từ vựng</button></div>
+<div class="popup" id="dictPopup"><button class="close-x" id="closePopup">×</button><div class="popup-title" id="dictWord"></div><div class="popup-body" id="dictMeaning">Đang tra...</div><div id="dictPronounce"></div><div id="dictGrammar" style="color:#a6dfb9;font-size:.86rem;margin-top:8px"></div><button class="btn primary" id="saveDictWordBtn" type="button" style="margin-top:12px;width:100%">＋ Lưu từ vựng</button></div>
 <div class="toast" id="toast"></div>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -511,7 +521,35 @@ async function fetchLyrics(track,artist,album,durationMs){
 
 function parseLrc(text){ const arr=[];const re=/\[(\d{1,3}):(\d{2})(?:\.(\d{1,3}))?\]\s*(.*)/; for(const raw of text.split(/\r?\n/)){const m=raw.match(re);if(!m)continue;const frac=m[3]?Number('0.'+m[3]):0;const t=Number(m[1])*60+Number(m[2])+frac;const val=m[4].trim();if(val)arr.push({time:t,text:val,translation:''});} lyrics=arr.sort((a,b)=>a.time-b.time);renderLyrics(); }
 function parsePlain(text){ lyrics=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).map((s,i)=>({time:i*5,text:s,translation:''}));renderLyrics(false); }
-function renderLyrics(synced=true){ const box=$('lyrics');box.innerHTML=''; lyrics.forEach((line,i)=>{const div=document.createElement('div');div.className='line';div.id='line-'+i;div.dataset.i=i;const words=line.text.split(/(\s+)/).map(part=>/^\s+$/.test(part)?part:`<span class="word" data-word="${esc(part.replace(/^\W+|\W+$/g,''))}">${esc(part)}</span>`).join('');div.innerHTML=`<div class="original">${words}</div><div class="translation" id="tr-${i}" style="${line.translation?'':'display:none'}">${esc(line.translation)}</div><div class="line-tools"><button class="tiny" data-translate="${i}">🌐 Dịch câu</button></div>`;box.appendChild(div);}); if(lyrics.length){$('translateAllBtn').disabled=false;$('clearTransBtn').disabled=false;} renderFullLyrics(); }
+// V13.9: Chinese text uses word segmentation rather than whitespace splitting.
+const hasHan=text=>/[\u3400-\u9fff]/u.test(String(text||''));
+let pinyinVisible=localStorage.getItem('sbl_pinyin_visible')!=='false';
+let pinyinLoader=null;
+function chineseTokens(text){
+  const t=String(text||'');
+  if(!hasHan(t))return t.split(/(\s+)/).map(part=>({text:part,word:part.trim().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu,'')}));
+  if(Intl.Segmenter){try{return [...new Intl.Segmenter('zh',{granularity:'word'}).segment(t)].map(x=>({text:x.segment,word:/[\p{L}\p{N}]/u.test(x.segment)?x.segment:''}));}catch(e){}}
+  return [...t].map(ch=>({text:ch,word:/[\p{L}\p{N}]/u.test(ch)?ch:''}));
+}
+function lyricWordMarkup(text,cls){return chineseTokens(text).map(x=>x.word?`<span class="${cls}" data-word="${esc(x.word)}">${esc(x.text)}</span>`:esc(x.text)).join('');}
+function loadPinyin(){
+ if(window.pinyinPro?.pinyin)return Promise.resolve(window.pinyinPro);
+ if(pinyinLoader)return pinyinLoader;
+ pinyinLoader=new Promise((resolve,reject)=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/pinyin-pro@3.27.0/dist/index.js';sc.async=true;sc.onload=()=>window.pinyinPro?.pinyin?resolve(window.pinyinPro):reject(Error('Không tải được thư viện Pinyin'));sc.onerror=()=>reject(Error('Không có kết nối đến thư viện Pinyin'));document.head.appendChild(sc);}).catch(e=>{pinyinLoader=null;throw e});
+ return pinyinLoader;
+}
+function pinyinKey(text){return 'sbl_py_'+String(text).trim();}
+async function refreshPinyin(){
+ const buttons=[$('pinyinToggle'),$('fullPinyinToggle')];buttons.forEach(b=>{if(b){b.setAttribute('aria-pressed',String(pinyinVisible));b.textContent=pinyinVisible?'拼 Pinyin ✓':'拼 Pinyin';}});
+ document.querySelectorAll('.lyric-pinyin').forEach(el=>{el.style.display=pinyinVisible?'':'none'});
+ if(!pinyinVisible||!lyrics.some(l=>hasHan(l.text)))return;
+ let lib;try{lib=await loadPinyin();}catch(e){toast('Không tải được Pinyin. Cần Internet lần đầu.');return;}
+ lyrics.forEach((line,i)=>{if(!hasHan(line.text))return;let py='';try{py=localStorage.getItem(pinyinKey(line.text))||'';if(!py){py=lib.pinyin(line.text,{toneType:'symbol',type:'string'});localStorage.setItem(pinyinKey(line.text),py);}}catch(e){return;}
+  for(const id of ['py-'+i,'full-py-'+i]){const el=$(id);if(el){el.textContent=py;el.style.display=pinyinVisible?'':'none';}}
+ });
+}
+function setPinyinVisible(){pinyinVisible=!pinyinVisible;localStorage.setItem('sbl_pinyin_visible',String(pinyinVisible));refreshPinyin();}
+function renderLyrics(synced=true){const box=$('lyrics');box.innerHTML='';lyrics.forEach((line,i)=>{const div=document.createElement('div');div.className='line';div.id='line-'+i;div.dataset.i=i;const words=lyricWordMarkup(line.text,'word');div.innerHTML=`<div class="original">${words}</div>${hasHan(line.text)?`<div class="lyric-pinyin" id="py-${i}" style="${pinyinVisible?'':'display:none'}"></div>`:''}<div class="translation" id="tr-${i}" style="${line.translation?'':'display:none'}">${esc(line.translation)}</div><div class="line-tools"><button class="tiny" data-translate="${i}">🌐 Dịch câu</button></div>`;box.appendChild(div);});if(lyrics.length){$('translateAllBtn').disabled=false;$('clearTransBtn').disabled=false;}renderFullLyrics();refreshPinyin();}
 function handleLyricsClick(e){ const w=e.target.closest('.word');if(w&&w.dataset.word){lookupWord(w.dataset.word);return;}const b=e.target.closest('[data-translate]');if(b)translateOne(Number(b.dataset.translate)); }
 function syncLyrics(sec){ if(!lyrics.length)return;let idx=-1;for(let i=0;i<lyrics.length;i++){if(sec>=lyrics[i].time)idx=i;else break;}if(idx===activeIndex||idx<0)return; if(activeIndex>=0)$('line-'+activeIndex)?.classList.remove('active');activeIndex=idx;const el=$('line-'+idx);if(el){el.classList.add('active');if(!fullLyricsOpen){const box=$('panel-now'); const target=Math.max(0,el.offsetTop-(box.clientHeight*0.72)); box.scrollTo({top:target,behavior:'smooth'});}} syncFullLyricsIndex(idx); }
 
@@ -759,9 +797,9 @@ async function lookupWord(word){
   if(!word)return;
   const request=++dictRequestId,context=lyrics[activeIndex]?.text||'';
   currentDictInfo=null;$('dictWord').textContent=word;$('dictMeaning').textContent='Đang tra…';$('dictGrammar').textContent='Đang xác định loại từ…';
-  $('dictPopup').classList.add('open');$('saveDictWordBtn').textContent='＋ Lưu từ vựng';
-  const grammar=fetchWordGrammar(word,context).then(info=>{if(request!==dictRequestId)return;currentDictInfo=info;$('dictGrammar').textContent=info?'Loại từ: '+(VOCAB_POS[info.pos]||'Chưa xác định')+(info.expansion?' · Dạng đầy đủ: '+info.expansion:'')+(info.lemma!==word.toLowerCase()?' · Từ gốc: '+info.lemma:'')+(info.phonetic?' · '+info.phonetic:'')+(info.alternatives.length>1?' · Có thể là: '+info.alternatives.map(x=>VOCAB_POS[x]).join(', '):''):'Loại từ: chưa xác định (có thể sửa thủ công)';});
-  const meaning=googleTranslate([word],$('targetLang').value).then(out=>{if(request!==dictRequestId)return;$('dictMeaning').innerHTML='Nghĩa: <b>'+esc(out[0]||'')+'</b>';}).catch(e=>{if(request===dictRequestId)$('dictMeaning').textContent=e.message;});
+  $('dictPopup').classList.add('open');$('dictPronounce').textContent='';if(hasHan(word))loadPinyin().then(lib=>{if(request===dictRequestId)$('dictPronounce').textContent='Pinyin: '+lib.pinyin(word,{toneType:'symbol',type:'string'});}).catch(()=>{});$('saveDictWordBtn').textContent='＋ Lưu từ vựng';
+  const grammar=(hasHan(word)?Promise.resolve(null):fetchWordGrammar(word,context)).then(info=>{if(request!==dictRequestId)return;currentDictInfo=info;$('dictGrammar').textContent=info?'Loại từ: '+(VOCAB_POS[info.pos]||'Chưa xác định')+(info.expansion?' · Dạng đầy đủ: '+info.expansion:'')+(info.lemma!==word.toLowerCase()?' · Từ gốc: '+info.lemma:'')+(info.phonetic?' · '+info.phonetic:'')+(info.alternatives.length>1?' · Có thể là: '+info.alternatives.map(x=>VOCAB_POS[x]).join(', '):''):hasHan(word)?'Tiếng Trung · Có thể chỉnh loại từ trong mục Từ đã lưu':'Loại từ: chưa xác định (có thể sửa thủ công)';});
+  const meaning=googleTranslate([word],hasHan(word)?'vi':$('targetLang').value).then(out=>{if(request!==dictRequestId)return;$('dictMeaning').innerHTML='Nghĩa: <b>'+esc(out[0]||'')+'</b>';}).catch(e=>{if(request===dictRequestId)$('dictMeaning').textContent=e.message;});
   await Promise.allSettled([grammar,meaning]);
 }
 
@@ -775,10 +813,11 @@ function renderFullLyrics(){
   box.innerHTML='';
   lyrics.forEach((line,i)=>{
     const div=document.createElement('div'); div.className='full-line'+(i===activeIndex?' active':'')+(i<activeIndex?' past':''); div.id='full-line-'+i;div.dataset.i=i;
-    const words=line.text.split(/(\s+)/).map(part=>/^\s+$/.test(part)?part:`<span class="full-word" data-word="${esc(part.replace(/^\W+|\W+$/g,''))}">${esc(part)}</span>`).join('');
-    div.innerHTML=`<div>${words}</div><div class="full-translation" id="full-tr-${i}" style="${line.translation?'':'display:none'}">${esc(line.translation||'')}</div>`;
+    const words=lyricWordMarkup(line.text,'full-word');
+    div.innerHTML=`<div>${words}</div>${hasHan(line.text)?`<div class="lyric-pinyin" id="full-py-${i}" style="${pinyinVisible?'':'display:none'}"></div>`:''}<div class="full-translation" id="full-tr-${i}" style="${line.translation?'':'display:none'}">${esc(line.translation||'')}</div>`;
     box.appendChild(div);
   });
+  refreshPinyin();
 }
 function updateFullLyricsMeta(){const m=currentSongMeta();$('fullLyricsSong').textContent=m.title;$('fullLyricsArtist').textContent=m.artist;}
 function focusFullLine(el,behavior='smooth'){const box=$('fullLyricsScroll');if(!box||!el)return;const target=Math.max(0,el.offsetTop-(box.clientHeight*0.26));box.scrollTo({top:target,behavior});}
@@ -796,6 +835,7 @@ function updateFullPlayerUI(){
   $('fullSeekRange').disabled=!playerDurationMs;$('fullElapsedText').textContent=fmtTime(playerPositionMs||getEstimatedProgress());$('fullDurationText').textContent=fmtTime(playerDurationMs);
   if(playerDurationMs)$('fullSeekRange').value=Math.round(Math.min(playerDurationMs,playerPositionMs||getEstimatedProgress())/playerDurationMs*1000);
 }
+$('pinyinToggle').onclick=setPinyinVisible;$('fullPinyinToggle').onclick=setPinyinVisible;
 $('openLyricsScreenBtn').onclick=()=>{closeUtilityDrawer();openFullLyrics();};$('closeLyricsScreenBtn').onclick=closeFullLyrics;
 $('fullPlayPauseBtn').onclick=()=>togglePlayPause();
 $('fullSeekRange').addEventListener('change',async()=>{if(!playerDurationMs)return;const ms=Math.round(Number($('fullSeekRange').value)/1000*playerDurationMs);await seekSpotifyPosition(ms);});

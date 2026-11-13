@@ -62,3 +62,10 @@ V12.2 - YOUTUBE OAUTH SCOPE FIX
 - Google Cloud OAuth Web Client must authorize the site's exact origin and redirect URI.
 
 V13.1: Bottom-right saved vocabulary tab. Save from word lookup, search, edit/delete, speech playback and JSON export. Stored locally in browser (not synced to Drive).
+
+V13.9 - TIENG TRUNG / PINYIN
+- Tach tu tieng Trung bang Intl.Segmenter de co the cham tra nghia.
+- Pinyin co dau thanh, nut an/hien tren giao dien thuong va toan man hinh.
+- Thu vien pinyin-pro duoc tai tu CDN khi can (lan dau can Internet); ket qua luu localStorage.
+- Tra nghia tieng Trung sang tieng Viet; luu tu vung nhu phien ban cu.
+- Luu y: chua kiem thu OAuth/Spotify tren trinh duyet thuc; pinyin co the can chinh sua thu cong voi tu da am.
