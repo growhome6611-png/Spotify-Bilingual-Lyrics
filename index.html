@@ -183,6 +183,12 @@ body > header{display:none!important}
 .word,.full-word{cursor:pointer;touch-action:manipulation}
 .word:active,.full-word:active{color:#1ed760}
 #dictPronounce{font-size:.9rem;color:#e8c78c;margin-top:6px}
+
+/* V14.1: focused sentence practice, mobile-first */
+.study-overlay{display:none;position:fixed;inset:0;z-index:450;background:rgba(0,0,0,.78);align-items:flex-end;justify-content:center;padding:10px;box-sizing:border-box}
+.study-overlay.open{display:flex}.study-sheet{width:min(680px,100%);max-height:92dvh;overflow:auto;background:#1b1b1b;color:#fff;border:1px solid #454545;border-radius:20px;padding:16px;box-sizing:border-box;padding-bottom:max(18px,env(safe-area-inset-bottom))}
+.study-head,.study-tabs,.study-options,.study-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:15px}.study-head strong{font-size:1.06rem}.study-sheet button{background:#303030;border:1px solid #494949;border-radius:11px;padding:10px;color:#fff;cursor:pointer;font:inherit}.study-head button{padding:6px 12px}.study-tabs button{flex:1}.study-tabs button.selected{background:#1ed760;color:#07190e;font-weight:800}.study-original{text-align:center;font-size:1.55rem;font-weight:700;line-height:1.6;white-space:pre-wrap;margin:16px 0}.study-reading{text-align:center;color:#e9c78d;line-height:1.6}.study-translation{text-align:center;color:#b2dfc2;margin:10px 0 18px;line-height:1.6}.study-muted{color:#aaa;font-size:.82rem;text-align:center;margin:8px 0}.study-options{flex-wrap:wrap;justify-content:center}.study-options label{font-size:.86rem;display:flex;align-items:center;gap:4px}.study-footer button{flex:1;font-size:.85rem}.study-footer #studyReplay{background:#1b6b3d}.study-sheet input[type=text],#studyAnswer{width:100%;box-sizing:border-box;background:#111;border:1px solid #555;border-radius:9px;color:white;padding:12px;font:inherit;margin:7px 0 10px}#studyCheck{background:#1ed760;color:#08220f;font-weight:700}#studyResult{min-height:24px;margin:8px 0;color:#d9e6db}
+@media(min-width:700px){.study-overlay{align-items:center}}@media(max-width:400px){.study-footer button{font-size:.76rem;padding:9px 5px}}
 </style>
 </head>
 <body>
@@ -245,6 +251,7 @@ body > header{display:none!important}
         <option value="vi">🇻🇳 Tiếng Việt</option><option value="zh-CN">🇨🇳 中文</option><option value="en">🇬🇧 English</option><option value="ja">🇯🇵 日本語</option><option value="ko">🇰🇷 한국어</option><option value="fr">🇫🇷 Français</option><option value="de">🇩🇪 Deutsch</option><option value="es">🇪🇸 Español</option><option value="th">🇹🇭 ไทย</option>
       </select>
       <button class="pinyin-toggle" id="pinyinToggle" type="button" aria-pressed="true">拼 Pinyin ✓</button>
+      <button class="btn" id="studyOpenBtn" type="button">🎧 Học câu</button>
       <button class="btn" id="translateAllBtn" disabled>🌐 Dịch toàn bài</button>
       <button class="btn" id="clearTransBtn" disabled>Ẩn bản dịch</button>
       <button class="btn" id="refreshBtn">↻ Làm mới</button>
@@ -337,6 +344,7 @@ body > header{display:none!important}
   </div>
   <div class="full-font-controls" role="group" aria-label="Cỡ chữ lời gốc và bản dịch"><button id="fullFontDownBtn" aria-label="Giảm cỡ chữ">A−</button><span id="fontSizeLabelFull">100%</span><button id="fullFontUpBtn" aria-label="Tăng cỡ chữ">A+</button></div>
   <button class="pinyin-toggle" id="fullPinyinToggle" type="button" aria-pressed="true" style="position:absolute;right:14px;top:100px;z-index:3">拼 Pinyin ✓</button>
+  <button class="lyrics-translate-chip" id="fullStudyOpenBtn" style="right:92px">🎧 Học</button>
   <button class="lyrics-translate-chip" id="fullTranslateBtn">🌐 Dịch</button>
   <div class="lyrics-scroll" id="fullLyricsScroll"><div class="empty" style="color:rgba(255,255,255,.72)">Chưa có lời bài hát.</div></div>
   <div class="lyrics-bottom">
@@ -396,10 +404,102 @@ body > header{display:none!important}
   <div class="playlist-picker-list" id="playlistPickerList"></div>
   <div class="dialog-actions"><button class="btn" id="closePickerBtn">Đóng</button></div>
 </div></div>
+<div class="study-overlay" id="studyOverlay" role="dialog" aria-modal="true" aria-label="Luyện nghe theo câu" aria-hidden="true">
+ <div class="study-sheet">
+  <div class="study-head"><strong>🎧 Luyện nghe theo câu</strong><button id="studyClose" type="button" aria-label="Đóng">✕</button></div>
+  <div class="study-tabs"><button data-study-tab="learn" class="selected">Học câu</button><button data-study-tab="quiz">Điền từ</button></div>
+  <div id="studyMeta" class="study-muted"></div>
+  <div id="studyOriginal" class="study-original"></div>
+  <div id="studyPinyin" class="study-reading"></div>
+  <div id="studyTranslation" class="study-translation"></div>
+  <div id="studyQuizArea" hidden><label for="studyAnswer">Nhập từ còn thiếu</label><input id="studyAnswer" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Nhập từ nghe được"><button id="studyCheck" type="button">Kiểm tra</button><div id="studyResult" aria-live="polite"></div></div>
+  <div class="study-options"><label><input id="studyShowPinyin" type="checkbox" checked> Phiên âm</label><label><input id="studyShowTranslation" type="checkbox" checked> Bản dịch</label><label><input id="studyRepeat" type="checkbox"> Lặp câu (A–B)</label></div>
+  <div id="studyLoopStatus" class="study-muted"></div>
+  <div class="study-footer"><button id="studyPrevious" type="button">‹ Câu trước</button><button id="studyReplay" type="button">▶ Nghe câu</button><button id="studyNext" type="button">Câu sau ›</button></div>
+ </div>
+</div>
 <div class="popup" id="dictPopup"><button class="close-x" id="closePopup">×</button><div class="popup-title" id="dictWord"></div><div class="popup-body" id="dictMeaning">Đang tra...</div><div id="dictPronounce"></div><div id="dictGrammar" style="color:#a6dfb9;font-size:.86rem;margin-top:8px"></div><button class="btn primary" id="saveDictWordBtn" type="button" style="margin-top:12px;width:100%">＋ Lưu từ vựng</button></div>
 <div class="toast" id="toast"></div>
 
-<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://accounts.google.com/gsi/client" async defer>
+// V14.1: learning mode for lyrics already available to this user.
+const STUDY_PREF_KEY='sbl_v141_study_prefs';
+let studyIndex=0,studyTab='learn',studyQuizAnswer='',studyLoopBusy=false,studyLoopTrack='',studyLoopLast=0;
+function studyPrefs(){try{return JSON.parse(localStorage.getItem(STUDY_PREF_KEY)||'{}')}catch(_){return {}}}
+function studySavePrefs(){localStorage.setItem(STUDY_PREF_KEY,JSON.stringify({pinyin:$('studyShowPinyin').checked,translation:$('studyShowTranslation').checked}));}
+function studyOpen(index){
+ if(!lyrics.length){toast('Hãy mở bài hát có lời trước khi học.');return;}
+ studyIndex=Math.max(0,Math.min(lyrics.length-1,Number.isFinite(index)?index:(activeIndex>=0?activeIndex:0)));
+ const pref=studyPrefs();$('studyShowPinyin').checked=pref.pinyin!==false;$('studyShowTranslation').checked=pref.translation!==false;
+ $('studyRepeat').checked=false;studyTab='learn';$('studyOverlay').classList.add('open');$('studyOverlay').setAttribute('aria-hidden','false');studyRender();
+}
+function studyClose(){ $('studyRepeat').checked=false;$('studyOverlay').classList.remove('open');$('studyOverlay').setAttribute('aria-hidden','true');studyLoopTrack='';}
+function studyTokens(text){
+ const han=/[\u3400-\u9fff]/.test(text);const lang=han?'zh':'en';
+ if(typeof Intl.Segmenter==='function'){
+  try{return [...new Intl.Segmenter(lang,{granularity:'word'}).segment(text)].filter(x=>x.isWordLike&&x.segment.trim()).map(x=>({word:x.segment,start:x.index}))}catch(_){}}
+ return [...text.matchAll(/[\u3400-\u9fff]+|[\p{L}\p{M}]+(?:['’][\p{L}\p{M}]+)*/gu)].map(x=>({word:x[0],start:x.index}));
+}
+function studyBuildQuiz(){
+ const text=lyrics[studyIndex]?.text||'',tokens=studyTokens(text).filter(x=>x.word.length>1||/[\u3400-\u9fff]/.test(x.word));
+ if(!tokens.length){studyQuizAnswer='';return text;}
+ const seed=Array.from(text).reduce((a,c)=>a+c.codePointAt(0),0)+studyIndex;
+ const token=tokens[seed%tokens.length];studyQuizAnswer=token.word;
+ return text.slice(0,token.start)+' ____ '+text.slice(token.start+token.word.length);
+}
+async function studyRender(){
+ const line=lyrics[studyIndex];if(!line){studyClose();return;}
+ document.querySelectorAll('[data-study-tab]').forEach(b=>b.classList.toggle('selected',b.dataset.studyTab===studyTab));
+ $('studyMeta').textContent=`Câu ${studyIndex+1}/${lyrics.length} · ${currentSongMeta().title||'Bài hát'}`;
+ $('studyQuizArea').hidden=studyTab!=='quiz';
+ $('studyOriginal').textContent=studyTab==='quiz'?studyBuildQuiz():line.text;
+ $('studyTranslation').textContent=line.translation||'Chưa có bản dịch cho câu này.';
+ $('studyTranslation').style.display=$('studyShowTranslation').checked?'block':'none';
+ $('studyPinyin').style.display=studyTab==='quiz'||!$('studyShowPinyin').checked?'none':'block';
+ $('studyPinyin').textContent='';
+ if(studyTab==='learn'&&$('studyShowPinyin').checked&&hasHan(line.text)){
+  try{const p=await loadPinyin();if($('studyOverlay').classList.contains('open')&&lyrics[studyIndex]===line)$('studyPinyin').textContent=p.pinyin(line.text,{toneType:'symbol',type:'string'});}catch(_){$('studyPinyin').textContent='Không tải được phiên âm.';}
+ }
+ $('studyPrevious').disabled=studyIndex===0;$('studyNext').disabled=studyIndex===lyrics.length-1;
+ $('studyAnswer').value='';$('studyResult').textContent='';
+ studyUpdateLoopStatus();
+}
+function studyUpdateLoopStatus(){
+ const line=lyrics[studyIndex],next=lyrics[studyIndex+1];
+ const valid=!!(line&&next&&Number.isFinite(line.time)&&Number.isFinite(next.time)&&next.time>line.time+.3&&playerDurationMs>0);
+ $('studyRepeat').disabled=!valid;
+ if(!valid)$('studyRepeat').checked=false;
+ $('studyLoopStatus').textContent=!valid?'Chưa có mốc thời gian đồng bộ hợp lệ để lặp câu.':$('studyRepeat').checked?'Đang bật lặp câu. Spotify có thể có độ trễ khi tua.':'Lặp A–B sử dụng mốc thời gian của câu hiện tại.';
+}
+function studyMove(step){studyIndex=Math.max(0,Math.min(lyrics.length-1,studyIndex+step));studyLoopLast=0;studyRender();}
+async function studyReplay(){
+ const line=lyrics[studyIndex];if(!line||!Number.isFinite(line.time)||playerDurationMs<=0){toast('Bài này chưa có mốc đồng bộ hoặc thiết bị phát.');return;}
+ await seekSpotifyPosition(Math.round(line.time*1000));
+}
+$('studyOpenBtn').onclick=()=>studyOpen();$('fullStudyOpenBtn').onclick=()=>studyOpen();
+$('studyClose').onclick=studyClose;$('studyOverlay').addEventListener('click',e=>{if(e.target===$('studyOverlay'))studyClose()});
+$('studyPrevious').onclick=()=>studyMove(-1);$('studyNext').onclick=()=>studyMove(1);$('studyReplay').onclick=studyReplay;
+$('studyShowPinyin').onchange=()=>{studySavePrefs();studyRender()};$('studyShowTranslation').onchange=()=>{studySavePrefs();studyRender()};
+$('studyRepeat').onchange=()=>{studyLoopTrack=currentTrackKey;studyLoopLast=0;studyUpdateLoopStatus()};
+document.querySelectorAll('[data-study-tab]').forEach(b=>b.onclick=()=>{studyTab=b.dataset.studyTab;studyRender()});
+$('studyCheck').onclick=()=>{
+ if(!studyQuizAnswer){$('studyResult').textContent='Không tìm được từ phù hợp để tạo câu hỏi.';return;}
+ const normalize=t=>String(t||'').normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase();
+ const ok=normalize($('studyAnswer').value)===normalize(studyQuizAnswer);
+ $('studyResult').textContent=ok?'✓ Chính xác!':'Chưa đúng. Đáp án: '+studyQuizAnswer;
+ try{const key='sbl_v141_quiz_stats';const stats=JSON.parse(localStorage.getItem(key)||'{}');const id=currentTrackKey||'manual';const rec=stats[id]||{attempts:0,correct:0};rec.attempts++;if(ok)rec.correct++;rec.updatedAt=new Date().toISOString();stats[id]=rec;localStorage.setItem(key,JSON.stringify(stats));}catch(_){}
+};
+$('studyAnswer').addEventListener('keydown',e=>{if(e.key==='Enter')$('studyCheck').click()});
+// A-B loop: use existing Spotify seek, throttle calls, and stop on track change.
+setInterval(()=>{
+ if(!$('studyOverlay').classList.contains('open')||!$('studyRepeat').checked||!isPlaying||studyLoopBusy)return;
+ if(studyLoopTrack!==currentTrackKey){$('studyRepeat').checked=false;studyUpdateLoopStatus();return;}
+ const a=lyrics[studyIndex],b=lyrics[studyIndex+1];if(!a||!b||!(b.time>a.time+.3))return;
+ const position=getEstimatedProgress()/1000;
+ if(position>=b.time-.12&&Date.now()-studyLoopLast>1400){studyLoopBusy=true;studyLoopLast=Date.now();seekSpotifyPosition(Math.round(a.time*1000)).finally(()=>{studyLoopBusy=false});}
+},350);
+
+</script>
 <script src="https://sdk.scdn.co/spotify-player.js"></script>
 <script>
 'use strict';
