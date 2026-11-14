@@ -282,6 +282,7 @@ body > header{display:none!important}
         <button class="btn" id="driveLyricsSave" type="button">📄 Lưu lời và bản dịch đang hiển thị</button>
         <button class="btn" id="driveMusicRefresh" type="button">↻ Xem lời và nhạc trên Drive</button>
         <button class="btn" id="driveRenameFiles" type="button">✏️ Đổi tên tệp cũ theo tên bài hát</button>
+        <button class="btn" id="driveConvertLrc" type="button">🔄 Chuyển JSON sang LRC hàng loạt</button>
       </div>
       <div id="driveMusicList" style="max-height:230px;overflow:auto;display:grid;gap:8px"></div>
       <p id="driveMusicStatus" style="font-size:.8rem;color:#bbb" aria-live="polite"></p>
@@ -1654,6 +1655,57 @@ async function refreshDriveMusicList(){
  }
  driveMusicStatus(list.children.length?'Đã tìm thấy '+list.children.length+' mục trong thư viện Drive.':'Chưa có tệp lời/bản dịch hoặc nhạc trong thư viện Drive này.');
 }
+// V14.14: non-destructive migration of timed legacy lyrics JSON to extended LRC.
+// Translation-only JSON cannot yield valid synchronized lyrics without a timed source.
+async function convertDriveJsonToLrcBatch(){
+ if(!driveTokenValid())throw Error('Hãy kết nối Google Drive trước.');
+ if(sharedDriveFolderId)throw Error('Thư viện chia sẻ chỉ đọc.');
+ const root=await ensureDriveFolder(), all=await listDriveFolderFiles(root);
+ const json=all.filter(f=>/\.json$/i.test(f.name)&&f.name!=='vocabulary.json');
+ const existing=new Set(all.filter(f=>/\.lrc$/i.test(f.name)).map(f=>f.name));
+ const records=[];let unreadable=0;
+ for(let i=0;i<json.length;i++){
+  const f=json[i];driveMusicStatus('Đang đọc JSON '+(i+1)+'/'+json.length+': '+f.name);
+  try{const data=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(f.id)+'?alt=media');if(Array.isArray(data?.lyrics))records.push({file:f,data});else unreadable++;}
+  catch(e){unreadable++;console.warn('JSON không đọc được',f.name,e);}
+ }
+ const byTrack=new Map();
+ for(const r of records){const k=r.data.trackKey;if(k){if(!byTrack.has(k))byTrack.set(k,[]);byTrack.get(k).push(r);}}
+ let converted=0,missing=0,already=0,errors=0,paired=0;
+ for(let i=0;i<records.length;i++){
+  const rec=records[i],d=rec.data;
+  const timed=d.lyrics.filter(x=>x&&typeof x.text==='string'&&x.text.trim()&&Number.isFinite(Number(x.time))&&x.time!==null&&x.time!==''&&Number(x.time)>=0);
+  if(!timed.length){missing++;continue;}
+  let song=d.song?.title&&d.song?.artist?d.song:await resolveSongForDrive(d.trackKey||'');
+  if(!song?.title||!song?.artist){missing++;continue;}
+  const filename=(song.artist+' - '+song.title).replace(/[\\/:*?"<>|\x00-\x1f]/g,'_').trim().slice(0,150)+'.lrc';
+  if(existing.has(filename)){already++;continue;}
+  const alternatives=byTrack.get(d.trackKey)||[];
+  const trans=alternatives.find(r=>r!==rec&&r.data.language==='vi'&&r.data.lyrics.some(x=>x?.translation));
+  const rows=timed.map((x,j)=>{
+   const originalIndex=d.lyrics.indexOf(x);
+   const alt=trans?.data.lyrics?.[originalIndex];
+   return {time:Number(x.time),text:x.text,pinyin:x.pinyin||'',translation:x.translation||alt?.translation||''};
+  });
+  if(trans)paired++;
+  const stamp=t=>{const cs=Math.round(t*100);return '['+String(Math.floor(cs/6000)).padStart(2,'0')+':'+String(Math.floor(cs%6000/100)).padStart(2,'0')+'.'+String(cs%100).padStart(2,'0')+']';};
+  const content=['[ti:'+song.title+']','[ar:'+song.artist+']','[by:Spotify Bilingual V14.14]','',...rows.flatMap(r=>{const ts=stamp(r.time);return [ts+r.text,r.pinyin?ts+'[py]'+r.pinyin:null,r.translation?ts+'[tr]'+r.translation:null].filter(Boolean);})].join('\n');
+  try{
+   driveMusicStatus('Đang tạo LRC '+(i+1)+'/'+records.length+': '+filename);
+   const result=await uploadDriveBlob(new Blob([content],{type:'text/plain;charset=utf-8'}),filename,root,'text/plain');
+   if(!result?.id)throw Error('Google Drive không xác nhận ID tệp');
+   existing.add(filename);converted++;
+  }catch(e){errors++;console.warn('Không tạo được LRC',filename,e);}
+ }
+ const report='Hoàn thành: '+converted+' LRC mới; '+already+' đã có; '+missing+' thiếu lời gốc có thời gian hoặc tên bài; '+unreadable+' JSON không hợp lệ; '+errors+' lỗi. JSON gốc được giữ nguyên.';
+ driveMusicStatus(report);alert(report);
+}
+$('driveConvertLrc').onclick=async()=>{
+ if(!confirm('Chuyển hàng loạt JSON có lời gốc và mốc thời gian sang LRC mở rộng? Bản chỉ có dịch sẽ được bỏ qua; tất cả JSON cũ được giữ nguyên.'))return;
+ const btn=$('driveConvertLrc');btn.disabled=true;
+ try{await convertDriveJsonToLrcBatch();await refreshDriveMusicList();}
+ catch(e){driveMusicStatus('Lỗi chuyển đổi: '+e.message);}finally{btn.disabled=false;}
+};
 $('driveMusicUpload').onclick=async()=>{try{$('driveMusicUpload').disabled=true;await uploadMusicBundle($('localAudioFile').files[0],$('localLyricFile').files[0],$('localTranslationFile').files[0]);}catch(e){driveMusicStatus('Lỗi: '+e.message);}finally{$('driveMusicUpload').disabled=false;}};
 $('driveLyricsSave').onclick=async()=>{try{await exportLyricsDrive();driveMusicStatus($('exportLyricsStatus').textContent);if($('exportLyricsStatus').textContent.startsWith('Đã lưu'))await refreshDriveMusicList();}catch(e){driveMusicStatus('Lỗi: '+e.message);}};
 $('driveMusicRefresh').onclick=()=>refreshDriveMusicList().catch(e=>driveMusicStatus('Lỗi: '+e.message));
