@@ -206,6 +206,7 @@ body > header{display:none!important}
     <div class="status" id="syncStatus">[Chờ đồng bộ]</div>
   </section>
 
+  <div style="display:flex;justify-content:flex-end;margin:-4px 0 9px"><button class="btn" id="openLocalImport">📁 Nhạc trên điện thoại</button></div>
   <section class="player-shell" id="playerShell">
     <div class="player-top">
       <div class="player-now">
@@ -259,6 +260,17 @@ body > header{display:none!important}
     </section>
     <div class="utility-hint">Bản dịch được ưu tiên lấy theo thứ tự: bộ nhớ máy → Google Drive → Google Translate API.</div>
   </section>
+  <section id="localImport" class="source-sheet" role="dialog" aria-modal="true" aria-label="Nhạc trên thiết bị" aria-hidden="true">
+    <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><strong>📁 Nhạc trên thiết bị</strong><button class="btn" id="closeLocalImport">✕</button></div>
+    <p style="font-size:.84rem;color:#bbb">Chọn tệp âm thanh của bạn. Lời LRC/TXT và bản dịch có thể nhập riêng. Tệp âm thanh chỉ được phát trên thiết bị, không tải lên máy chủ.</p>
+    <label>1. Nhạc MP3/M4A/WAV/FLAC<input id="localAudioFile" type="file" accept="audio/*,.mp3,.m4a,.wav,.flac,.ogg" style="display:block;width:100%;margin:8px 0 14px"></label>
+    <label>2. Lời bài hát LRC/TXT<input id="localLyricFile" type="file" accept=".lrc,.txt,text/plain" style="display:block;width:100%;margin:8px 0 14px"></label>
+    <label>3. Bản dịch LRC/TXT (mỗi dòng tương ứng với lời gốc)<input id="localTranslationFile" type="file" accept=".lrc,.txt,text/plain" style="display:block;width:100%;margin:8px 0 14px"></label>
+    <button class="btn primary" id="localImportApply">▶ Mở bài hát trên thiết bị</button>
+    <button class="btn" id="localExitBtn">Trở lại Spotify</button>
+    <p id="localImportStatus" style="font-size:.8rem;color:#bbb" aria-live="polite"></p>
+  </section>
+  <audio id="localAudio" preload="metadata" style="display:none"></audio>
   <div class="source-overlay" id="sourceOverlay"></div>
   <section id="manualLyricsTools" class="source-sheet" role="dialog" aria-modal="true" aria-label="Nguồn lời bài hát" aria-hidden="true">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>📄 Nguồn lời bài hát</strong><div class="source-sheet-actions"><button class="btn" id="manualToggle">+ Thêm / sửa lời</button><button class="btn" id="closeSourceBtn" aria-label="Đóng nguồn lời">✕</button></div></div>
@@ -485,6 +497,7 @@ function logoutSpotify(){ if(webPlayer){try{webPlayer.disconnect()}catch(_){ }we
 function updateLoginUI(){ const b=$('loginBtn'); const compact=window.innerWidth<=640; b.dataset.connected=(accessToken||refreshToken)?'true':'false'; if(accessToken||refreshToken){b.textContent=compact?'🟢 Đã kết nối':'🟢 Spotify đã kết nối';b.title='Bấm để ngắt kết nối';}else{b.textContent=compact?'🔗 Kết nối':'🔗 Kết nối Spotify';b.title='';} }
 
 async function fetchCurrentlyPlaying(force=false){
+  if(localMode)return;
   try{
     const token=await ensureToken(); if(!token) return;
     const res=await fetch('https://api.spotify.com/v1/me/player/currently-playing',{headers:{Authorization:'Bearer '+token}});
@@ -502,7 +515,7 @@ async function fetchCurrentlyPlaying(force=false){
     syncLyrics(getEstimatedProgress()/1000);
   }catch(e){ console.error(e);$('syncStatus').textContent='[Lỗi kết nối Spotify]'; }
 }
-function getEstimatedProgress(){ return progressAnchorMs+(isPlaying?(Date.now()-progressAnchorAt):0); }
+function getEstimatedProgress(){ if(localMode)return Math.round(localAudio.currentTime*1000); return progressAnchorMs+(isPlaying?(Date.now()-progressAnchorAt):0); }
 function startPolling(){ if(pollTimer)clearInterval(pollTimer); fetchCurrentlyPlaying(true); pollTimer=setInterval(()=>fetchCurrentlyPlaying(false),3500); setInterval(()=>syncLyrics(getEstimatedProgress()/1000),500); }
 
 // V14.1: learning mode for lyrics already available to this user.
@@ -973,7 +986,7 @@ function syncFullLyricsIndex(idx){
 function updateFullTranslation(i){const el=$('full-tr-'+i);if(el&&lyrics[i]){el.textContent=lyrics[i].translation||'';el.style.display=lyrics[i].translation?'block':'none';}}
 function updateFullPlayerUI(){
   if(!$('fullPlayPauseBtn'))return;
-  $('fullPlayPauseBtn').disabled=!playerReady;$('fullPlayPauseBtn').textContent=isPlaying?'❚❚':'▶';
+  $('fullPlayPauseBtn').disabled=!(playerReady||localMode);$('fullPlayPauseBtn').textContent=isPlaying?'❚❚':'▶';
   $('fullSeekRange').disabled=!playerDurationMs;$('fullElapsedText').textContent=fmtTime(playerPositionMs||getEstimatedProgress());$('fullDurationText').textContent=fmtTime(playerDurationMs);
   if(playerDurationMs)$('fullSeekRange').value=Math.round(Math.min(playerDurationMs,playerPositionMs||getEstimatedProgress())/playerDurationMs*1000);
 }
@@ -1059,6 +1072,7 @@ async function playTrackInApp(t){
 // V11.15: control the actual Spotify Connect device, not an idle Web Playback SDK instance.
 let playbackCommandPending=false;
 async function spotifyPlaybackCommand(kind){
+  if(localMode){if(kind==='toggle'){if(localAudio.paused)await localAudio.play();else localAudio.pause();}else toast('Chế độ tệp cá nhân: chỉ có một bài đang mở.');return;}
   if(playbackCommandPending)return;
   playbackCommandPending=true;
   const buttons=['playPauseBtn','fullPlayPauseBtn','prevBtn','nextBtn'];
@@ -1094,6 +1108,7 @@ async function togglePlayPause(){return spotifyPlaybackCommand('toggle');}
 async function previousTrack(){return spotifyPlaybackCommand('previous');}
 async function nextTrack(){return spotifyPlaybackCommand('next');}
 async function seekSpotifyPosition(ms){
+  if(localMode){localAudio.currentTime=Math.max(0,Math.min(localAudio.duration||0,ms/1000));renderProgressUI(localAudio.currentTime*1000,playerDurationMs);syncLyrics(localAudio.currentTime);return;}
   try{
     if(activePlaybackIsWeb&&webPlayer&&playerReady)await webPlayer.seek(ms);
     else await spotifyApi('/me/player/seek?position_ms='+Math.max(0,Math.round(ms)),{method:'PUT'});
@@ -1102,8 +1117,8 @@ async function seekSpotifyPosition(ms){
   }catch(e){showPlayerError('Không thể tua bài: '+e.message);fetchCurrentlyPlaying(false);}
 }
 async function seekPlayer(){if(!playerDurationMs)return;await seekSpotifyPosition(Math.round(Number($('seekRange').value)/1000*playerDurationMs));}
-async function setPlayerVolume(){if(!webPlayer)return;try{await webPlayer.setVolume(Number($('volumeRange').value)/100);}catch(e){showPlayerError(e.message);}}
-function animatePlayerProgress(){if(playerDurationMs){const ms=Math.min(playerDurationMs,getEstimatedProgress());playerPositionMs=ms;renderProgressUI(ms,playerDurationMs);}requestAnimationFrame(animatePlayerProgress);}
+async function setPlayerVolume(){if(localMode){localAudio.volume=Number($('volumeRange').value)/100;return;}if(!webPlayer)return;try{await webPlayer.setVolume(Number($('volumeRange').value)/100);}catch(e){showPlayerError(e.message);}}
+function animatePlayerProgress(){if(localMode){renderProgressUI(localAudio.currentTime*1000,playerDurationMs);syncLyrics(localAudio.currentTime);}else if(playerDurationMs){const ms=Math.min(playerDurationMs,getEstimatedProgress());playerPositionMs=ms;renderProgressUI(ms,playerDurationMs);}requestAnimationFrame(animatePlayerProgress);}
 requestAnimationFrame(animatePlayerProgress);
 
 // ---------- Spotify catalog / library / playlists v3 ----------
@@ -1279,6 +1294,64 @@ let likedTrackId='',likedTrackState=false,likedCheckSeq=0;
 function updateLikeButton(){const b=$('likeCurrentBtn');if(!b)return;b.textContent=likedTrackState?'♥':'♡';b.setAttribute('aria-pressed',String(likedTrackState));b.title=likedTrackState?'Bỏ khỏi Liked Songs':'Thêm vào Liked Songs';}
 async function refreshLikeState(id){const seq=++likedCheckSeq;likedTrackId=id||'';likedTrackState=false;updateLikeButton();if(!id||!accessToken)return;try{const d=await spotifyApi('/me/library/contains?uris='+encodeURIComponent('spotify:track:'+id));if(seq!==likedCheckSeq)return;likedTrackState=Array.isArray(d)?!!d[0]:!!(d?.[0]??d?.contains?.[0]);updateLikeButton();}catch(e){console.warn('Không thể kiểm tra yêu thích:',e.message);}}
 $('likeCurrentBtn').onclick=async()=>{const id=lastTrackId||currentTrackKey;if(!id||!(/^[A-Za-z0-9]{22}$/.test(id))){toast('Hãy mở một bài hát Spotify trước.');return;}const b=$('likeCurrentBtn');b.disabled=true;try{const uri='spotify:track:'+id;await spotifyApi('/me/library?uris='+encodeURIComponent(uri),{method:likedTrackState?'DELETE':'PUT'});likedTrackId=id;likedTrackState=!likedTrackState;updateLikeButton();toast(likedTrackState?'Đã thêm vào Liked Songs':'Đã bỏ khỏi Liked Songs');}catch(e){toast('Không cập nhật được yêu thích: '+e.message);}finally{b.disabled=false;}};
+
+// V14.5: local-device playback. Audio never leaves the device.
+let localMode=false,localAudioUrl='';
+const localAudio=$('localAudio');
+function showLocalImport(){closeUtilityDrawer();$('localImport').classList.add('open');$('localImport').setAttribute('aria-hidden','false');$('sourceOverlay').classList.add('open');}
+function hideLocalImport(){$('localImport').classList.remove('open');$('localImport').setAttribute('aria-hidden','true');$('sourceOverlay').classList.remove('open');}
+$('openLocalImport').onclick=showLocalImport;
+$('closeLocalImport').onclick=hideLocalImport;
+$('sourceOverlay').addEventListener('click',hideLocalImport);
+function exitLocalMode(){
+ if(!localMode)return;localAudio.pause();localMode=false;
+ if(localAudioUrl){URL.revokeObjectURL(localAudioUrl);localAudioUrl='';}
+ localAudio.removeAttribute('src');localAudio.load();
+ isPlaying=false;playerDurationMs=0;playerPositionMs=0;renderProgressUI(0,0);
+ $('playerDevice').textContent='● Chế độ Spotify';$('syncStatus').textContent='[Đã trở lại Spotify]';
+ $('prevBtn').disabled=!(accessToken||refreshToken);$('nextBtn').disabled=!(accessToken||refreshToken);
+ $('playPauseBtn').disabled=!(accessToken||refreshToken);$('fullPlayPauseBtn').disabled=!(accessToken||refreshToken);
+ if(accessToken||refreshToken)fetchCurrentlyPlaying(true);
+}
+$('localExitBtn').onclick=()=>{exitLocalMode();hideLocalImport();};
+localAudio.addEventListener('play',()=>{isPlaying=true;$('playPauseBtn').textContent='❚❚';$('fullPlayPauseBtn').textContent='❚❚';});
+localAudio.addEventListener('pause',()=>{if(!localMode)return;isPlaying=false;$('playPauseBtn').textContent='▶';$('fullPlayPauseBtn').textContent='▶';});
+localAudio.addEventListener('ended',()=>{isPlaying=false;$('playPauseBtn').textContent='▶';$('fullPlayPauseBtn').textContent='▶';});
+localAudio.addEventListener('loadedmetadata',()=>{if(localMode){playerDurationMs=Math.round((localAudio.duration||0)*1000);renderProgressUI(0,playerDurationMs);}});
+function importTranslationLines(text){
+ const rows=String(text||'').replace(/^\uFEFF/,'').split(/\r?\n/).map(x=>x.trim()).filter(x=>x&&!/^\[(?:ti|ar|al|by|offset):/i.test(x));
+ const parsed=rows.map(x=>{const m=x.match(/^\[(\d{1,3}):(\d{2})(?:\.(\d{1,3}))?\]\s*(.*)$/);return m?{time:Number(m[1])*60+Number(m[2])+Number('0.'+(m[3]||'0')),text:m[4]}:{time:null,text:x};}).filter(x=>x.text);
+ if(!parsed.length)return 0;
+ let count=0;
+ if(parsed.some(x=>x.time!==null)&&lyrics.some(x=>Number.isFinite(x.time))){
+   for(const line of lyrics){if(!Number.isFinite(line.time))continue;let nearest=null,delta=Infinity;for(const tr of parsed){if(tr.time===null)continue;const d=Math.abs(tr.time-line.time);if(d<delta){delta=d;nearest=tr;}}if(nearest&&delta<=1.5){line.translation=nearest.text;count++;}}
+ }else{for(let i=0;i<Math.min(lyrics.length,parsed.length);i++){lyrics[i].translation=parsed[i].text;count++;}}
+ return count;
+}
+$('localImportApply').onclick=async()=>{
+ const f=$('localAudioFile').files[0],lf=$('localLyricFile').files[0],tf=$('localTranslationFile').files[0];
+ if(!f){$('localImportStatus').textContent='Hãy chọn tệp âm thanh trước.';return;}
+ if(!/\.(mp3|m4a|wav|flac|ogg|aac)$/i.test(f.name)&&!f.type.startsWith('audio/')){toast('Tệp này không phải âm thanh được hỗ trợ.');return;}
+ if(f.size>500*1024*1024){toast('Tệp âm thanh quá 500 MB.');return;}
+ try{
+  const lyricText=lf?await lf.text():'';const translationText=tf?await tf.text():'';
+  if(lf&&lf.size>1024*1024||tf&&tf.size>1024*1024)throw Error('Tệp lời hoặc bản dịch vượt 1 MB.');
+  if(localAudioUrl)URL.revokeObjectURL(localAudioUrl);
+  localAudio.pause();localAudioUrl=URL.createObjectURL(f);localAudio.src=localAudioUrl;localAudio.load();
+  localMode=true;lastTrackId='';currentTrackKey='local:'+f.name+':'+f.size;
+  const title=f.name.replace(/\.[^.]+$/,'');$('trackTitle').textContent=title;$('trackArtist').textContent='Nhạc trên thiết bị';$('playerTitle').textContent=title;$('playerArtist').textContent='Tệp cá nhân';$('playerDevice').textContent='● Đang phát từ thiết bị';
+  $('cover').removeAttribute('src');$('playerCover').removeAttribute('src');
+  $('prevBtn').disabled=true;$('nextBtn').disabled=true;$('playPauseBtn').disabled=false;$('fullPlayPauseBtn').disabled=false;
+  lyrics=[];activeIndex=-1;
+  if(lyricText.trim()){applyManualContent(lyricText);localStorage.setItem(manualKey(),JSON.stringify({text:lyricText,offset:0,savedAt:Date.now()}));}
+  else{const cached=manualSaved();if(cached)applyManualContent(cached.text,cached.offset);else{$('lyrics').innerHTML='<div class="empty">Chưa có lời. Mở Nguồn lời để nhập LRC/TXT.</div>';}}
+  if(translationText.trim()&&lyrics.length){const n=importTranslationLines(translationText);renderLyrics();saveTranslationCache();$('localImportStatus').textContent='Đã ghép '+n+' dòng bản dịch.';}
+  else if(lyrics.length)await restoreTranslationsSmart();
+  $('syncStatus').textContent='[Nhạc trên thiết bị'+(lyrics.some(x=>Number.isFinite(x.time))?' • lời đồng bộ':' • chưa có LRC')+']';
+  hideLocalImport();switchTab('now');
+  try{await localAudio.play();}catch(_){toast('Đã mở bài hát. Bấm ▶ để phát.');}
+ }catch(e){$('localImportStatus').textContent=e.message;toast('Không mở được bài hát: '+e.message);}
+};
 
 async function init(){
   const lang=localStorage.getItem(LS.lang)||'vi';$('targetLang').value=lang;$('quickLang').value=lang;$('defaultLang').value=lang;$('redirectHint').textContent=redirectUri();updateApiState();updateDriveStatus();setTimeout(()=>{initGoogleTokenClient();updateDriveStatus();},600);
