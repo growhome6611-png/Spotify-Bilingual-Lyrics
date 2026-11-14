@@ -273,6 +273,17 @@ body > header{display:none!important}
     <label>1. Nhạc MP3/M4A/WAV/FLAC<input id="localAudioFile" type="file" accept="audio/*,.mp3,.m4a,.wav,.flac,.ogg" style="display:block;width:100%;margin:8px 0 14px"></label>
     <label>2. Lời bài hát LRC/TXT<input id="localLyricFile" type="file" accept=".lrc,.txt,text/plain" style="display:block;width:100%;margin:8px 0 14px"></label>
     <label>3. Bản dịch LRC/TXT (mỗi dòng tương ứng với lời gốc)<input id="localTranslationFile" type="file" accept=".lrc,.txt,text/plain" style="display:block;width:100%;margin:8px 0 14px"></label>
+    <div style="border-top:1px solid #444;margin:15px 0;padding-top:12px">
+      <strong>☁ Google Drive · Thư viện cá nhân</strong>
+      <p style="font-size:.78rem;color:#bbb">Kết nối Drive trong Cài đặt trước. Chỉ tải lên âm thanh và lời mà bạn có quyền lưu trữ. Dữ liệu được lưu riêng trong Drive của tài khoản Google đang kết nối.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin:10px 0">
+        <button class="btn" id="driveMusicUpload" type="button">☁ Lưu 3 tệp đã chọn lên Drive</button>
+        <button class="btn" id="driveLyricsSave" type="button">📄 Lưu lời và bản dịch đang hiển thị</button>
+        <button class="btn" id="driveMusicRefresh" type="button">↻ Xem thư viện Drive</button>
+      </div>
+      <div id="driveMusicList" style="max-height:230px;overflow:auto;display:grid;gap:8px"></div>
+      <p id="driveMusicStatus" style="font-size:.8rem;color:#bbb" aria-live="polite"></p>
+    </div>
     <button class="btn primary" id="localImportApply">▶ Mở bài hát trên thiết bị</button>
     <button class="btn" id="localExitBtn">Trở lại Spotify</button>
     <p id="localImportStatus" style="font-size:.8rem;color:#bbb" aria-live="polite"></p>
@@ -1360,6 +1371,98 @@ $('localImportApply').onclick=async()=>{
   try{await localAudio.play();}catch(_){toast('Đã mở bài hát. Bấm ▶ để phát.');}
  }catch(e){$('localImportStatus').textContent=e.message;toast('Không mở được bài hát: '+e.message);}
 };
+
+
+// V14.7: Drive personal music library. Uses drive.file scope; only app-created files are listed.
+const DRIVE_MUSIC_PREFIX='music_library_v147_';
+function driveMusicStatus(msg){$('driveMusicStatus').textContent=msg;}
+function safeMusicName(s){return String(s||'Bai hat').replace(/[\\/:*?"<>|]/g,'_').slice(0,90);}
+async function driveMusicFolder(){
+ const root=await ensureDriveFolder();
+ const q=encodeURIComponent(`name='Thu vien nhac' and '${root}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+ const d=await driveApi('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=nextPageToken,files(id,name)&pageSize=20');
+ if(d.files?.length)return d.files[0].id;
+ const created=await driveApi('https://www.googleapis.com/drive/v3/files?fields=id',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Thu vien nhac',mimeType:'application/vnd.google-apps.folder',parents:[root]})});return created.id;
+}
+async function uploadDriveBlob(blob,name,folder,mime){
+ const metadata={name,parents:[folder],mimeType:mime||'application/octet-stream'};
+ const boundary='drivev147_'+Date.now().toString(36);
+ const encoder=new TextEncoder();const prefix=encoder.encode('--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(metadata)+'\r\n--'+boundary+'\r\nContent-Type: '+(mime||'application/octet-stream')+'\r\n\r\n');
+ const bytes=new Uint8Array(await blob.arrayBuffer()),suffix=encoder.encode('\r\n--'+boundary+'--');
+ const body=new Uint8Array(prefix.length+bytes.length+suffix.length);body.set(prefix);body.set(bytes,prefix.length);body.set(suffix,prefix.length+bytes.length);
+ return driveApi('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name',{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+boundary},body});
+}
+async function uploadMusicBundle(audio,lyric,translation){
+ if(!driveTokenValid())throw Error('Hãy kết nối Google Drive trong Cài đặt trước.');
+ if(!audio&&!lyric&&!translation)throw Error('Chưa chọn tệp nào.');
+ if(audio&&audio.size>200*1024*1024)throw Error('Tệp âm thanh lớn hơn 200 MB; hãy dùng tệp nhỏ hơn.');
+ for(const f of [lyric,translation])if(f&&f.size>1024*1024)throw Error('Tệp lời/bản dịch vượt 1 MB.');
+ const folder=await driveMusicFolder(),stamp=Date.now().toString(36),files={};
+ for(const [key,file] of [['audio',audio],['lyrics',lyric],['translation',translation]]){
+  if(!file)continue;
+  driveMusicStatus('Đang tải '+file.name+' lên Drive...');
+  const item=await uploadDriveBlob(file,stamp+'_'+safeMusicName(file.name),folder,file.type||'application/octet-stream');
+  files[key]={id:item.id,name:file.name,mime:file.type||''};
+ }
+ const title=audio?.name||lyric?.name||'Lời bài hát';
+ const manifest={version:1,title,createdAt:new Date().toISOString(),files};
+ await uploadDriveBlob(new Blob([JSON.stringify(manifest)],{type:'application/json'}),DRIVE_MUSIC_PREFIX+stamp+'.json',folder,'application/json');
+ driveMusicStatus('✓ Đã lưu lên Drive: '+title);await refreshDriveMusicList();
+}
+async function downloadDriveMusicFile(meta){
+ const r=await fetch('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(meta.id)+'?alt=media',{headers:{Authorization:'Bearer '+googleDriveToken}});
+ if(!r.ok)throw Error('Không tải được '+meta.name+' (HTTP '+r.status+'). Hãy kết nối Drive lại.');
+ const blob=await r.blob();return new File([blob],meta.name,{type:meta.mime||blob.type});
+}
+function setLocalFileInput(id,file){
+ const dt=new DataTransfer();dt.items.add(file);$(id).files=dt.files;
+}
+async function openDriveMusicBundle(manifest){
+ if(!driveTokenValid())throw Error('Phiên Google Drive đã hết hạn. Hãy kết nối lại.');
+ const files=manifest.files||{};
+ if(!files.audio){
+  if(files.lyrics){const lf=await downloadDriveMusicFile(files.lyrics);const content=await lf.text();
+   if(content.trim().startsWith('{')){const data=JSON.parse(content);if(Array.isArray(data.lyrics)){lyrics=data.lyrics;renderLyrics();if(data.song?.title)$('trackTitle').textContent=data.song.title;toast('Đã mở lời và bản dịch từ Drive.');hideLocalImport();return;}}
+   setLocalFileInput('localLyricFile',lf);
+  }
+  if(files.translation)setLocalFileInput('localTranslationFile',await downloadDriveMusicFile(files.translation));
+  driveMusicStatus('Đã chọn lời và bản dịch từ Drive. Hãy chọn thêm tệp âm thanh trên thiết bị để phát.');return;
+ }
+ driveMusicStatus('Đang tải bài hát từ Google Drive...');
+ setLocalFileInput('localAudioFile',await downloadDriveMusicFile(files.audio));
+ if(files.lyrics)setLocalFileInput('localLyricFile',await downloadDriveMusicFile(files.lyrics));else $('localLyricFile').value='';
+ if(files.translation)setLocalFileInput('localTranslationFile',await downloadDriveMusicFile(files.translation));else $('localTranslationFile').value='';
+ driveMusicStatus('Đã tải đủ tệp. Đang mở bài hát...');$('localImportApply').click();
+}
+async function refreshDriveMusicList(){
+ if(!driveTokenValid())throw Error('Hãy kết nối Google Drive trong Cài đặt trước.');
+ driveMusicStatus('Đang đọc thư viện Google Drive...');const folder=await driveMusicFolder();
+ let token='',all=[];
+ do{const q=encodeURIComponent(`'${folder}' in parents and name contains '${DRIVE_MUSIC_PREFIX}' and trashed=false`);
+ const url='https://www.googleapis.com/drive/v3/files?q='+q+'&fields=nextPageToken,files(id,name,modifiedTime)&pageSize=100'+(token?'&pageToken='+encodeURIComponent(token):'');
+ const page=await driveApi(url);all.push(...(page.files||[]));token=page.nextPageToken||'';
+ }while(token&&all.length<1000);
+ all.sort((a,b)=>(b.modifiedTime||'').localeCompare(a.modifiedTime||''));
+ const list=$('driveMusicList');list.replaceChildren();
+ if(!all.length){driveMusicStatus('Thư viện Drive chưa có bài hát nào.');return;}
+ for(const entry of all){
+  try{const m=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(entry.id)+'?alt=media');
+   if(!m?.files)continue;
+   const btn=document.createElement('button');btn.type='button';btn.className='btn';btn.style.cssText='text-align:left;white-space:normal;line-height:1.5';
+   btn.textContent='▶ '+(m.title||'Bài hát')+' · '+[m.files.audio?'Nhạc':null,m.files.lyrics?'Lời':null,m.files.translation?'Dịch':null].filter(Boolean).join(' / ');
+   btn.onclick=()=>openDriveMusicBundle(m).catch(e=>driveMusicStatus('Lỗi: '+e.message));list.append(btn);
+  }catch(e){console.warn('Manifest Drive không đọc được',entry.name,e);}
+ }
+ driveMusicStatus('Đã tìm thấy '+list.children.length+' mục trong thư viện Drive.');
+}
+$('driveMusicUpload').onclick=async()=>{try{$('driveMusicUpload').disabled=true;await uploadMusicBundle($('localAudioFile').files[0],$('localLyricFile').files[0],$('localTranslationFile').files[0]);}catch(e){driveMusicStatus('Lỗi: '+e.message);}finally{$('driveMusicUpload').disabled=false;}};
+$('driveLyricsSave').onclick=async()=>{try{
+ if(!lyrics.length)throw Error('Chưa có lời bài hát đang hiển thị.');
+ const payload={version:1,song:{title:$('trackTitle').textContent,artist:$('trackArtist').textContent},lyrics:lyrics.map(x=>({time:x.time,text:x.text,translation:x.translation||''}))};
+ const f=new File([JSON.stringify(payload,null,2)],safeMusicName(payload.song.title)+'.json',{type:'application/json'});
+ await uploadMusicBundle(null,f,null);
+ }catch(e){driveMusicStatus('Lỗi: '+e.message);}};
+$('driveMusicRefresh').onclick=()=>refreshDriveMusicList().catch(e=>driveMusicStatus('Lỗi: '+e.message));
 
 async function init(){
   const lang=localStorage.getItem(LS.lang)||'vi';$('targetLang').value=lang;$('quickLang').value=lang;$('defaultLang').value=lang;$('redirectHint').textContent=redirectUri();updateApiState();updateDriveStatus();setTimeout(()=>{initGoogleTokenClient();updateDriveStatus();},600);
