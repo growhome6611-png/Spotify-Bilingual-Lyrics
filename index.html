@@ -270,15 +270,16 @@ body > header{display:none!important}
   </section>
   <section id="localImport" class="source-sheet" role="dialog" aria-modal="true" aria-label="Nhạc trên thiết bị" aria-hidden="true">
     <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><strong>📁 Nhạc trên thiết bị</strong><button class="btn" id="closeLocalImport">✕</button></div>
-    <p style="font-size:.84rem;color:#bbb">Chọn tệp âm thanh của bạn. Lời LRC/TXT và bản dịch có thể nhập riêng. Tệp âm thanh chỉ được phát trên thiết bị, không tải lên máy chủ.</p>
+    <p style="font-size:.84rem;color:#bbb">Chọn tệp âm thanh của bạn. Chọn một tệp LRC mở rộng chứa lời gốc, Pinyin và bản dịch. Nếu chưa có LRC, bạn vẫn có thể mở nhạc trước. Tệp âm thanh chỉ được phát trên thiết bị, không tải lên máy chủ.</p>
     <label>1. Nhạc MP3/M4A/WAV/FLAC<input id="localAudioFile" type="file" accept="audio/*,.mp3,.m4a,.wav,.flac,.ogg" style="display:block;width:100%;margin:8px 0 14px"></label>
-    <label>2. Lời bài hát LRC mở rộng/TXT<input id="localLyricFile" type="file" accept=".lrc,.txt,text/plain" style="display:block;width:100%;margin:8px 0 14px"></label>
-    <label>3. Bản dịch LRC/TXT (mỗi dòng tương ứng với lời gốc)<input id="localTranslationFile" type="file" accept=".lrc,.txt,text/plain" style="display:block;width:100%;margin:8px 0 14px"></label>
+    <label>2. LRC mở rộng (Lời gốc + Pinyin + Bản dịch)<input id="localLyricFile" type="file" accept=".lrc,.txt,text/plain" style="display:block;width:100%;margin:8px 0 8px"></label>
+    <p style="font-size:.78rem;color:#aaa;margin:0 0 14px">Chỉ cần một tệp LRC. Ứng dụng đọc các dòng [py] và [tr] cùng mốc thời gian. Tệp cũ vẫn được hỗ trợ khi mở từ thư viện Drive.</p>
+    <input id="localTranslationFile" type="file" accept=".lrc,.txt,text/plain" hidden aria-hidden="true" tabindex="-1">
     <div style="border-top:1px solid #444;margin:15px 0;padding-top:12px">
       <strong>☁ Google Drive · Thư viện lời và nhạc</strong>
       <p style="font-size:.78rem;color:#bbb">Kết nối Drive trong Cài đặt trước. Chỉ tải lên âm thanh và lời mà bạn có quyền lưu trữ. Dữ liệu được lưu riêng trong Drive của tài khoản Google đang kết nối.</p>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin:10px 0">
-        <button class="btn" id="driveMusicUpload" type="button">☁ Lưu 3 tệp đã chọn lên Drive</button>
+        <button class="btn" id="driveMusicUpload" type="button">☁ Lưu nhạc và LRC đã chọn lên Drive</button>
         <button class="btn" id="driveLyricsSave" type="button">📄 Lưu lời và bản dịch đang hiển thị</button>
         <button class="btn" id="driveMusicRefresh" type="button">↻ Xem lời và nhạc trên Drive</button>
         <button class="btn" id="driveRenameFiles" type="button">✏️ Đổi tên tệp cũ theo tên bài hát</button>
@@ -413,7 +414,7 @@ body > header{display:none!important}
   <div class="hint">Spotify Redirect URI cần thêm chính xác vào Spotify Developer Dashboard:<br><code id="redirectHint"></code><br><br>Ứng dụng dùng OAuth PKCE, không cần Client Secret. Bản V5 có trình phát và màn hình lời toàn màn hình; vẫn cần quyền streaming + điều khiển phát nhạc. Sau khi cập nhật, hãy ngắt kết nối và kết nối Spotify lại một lần. Trình phát Web Playback SDK yêu cầu Spotify Premium. Google Drive dùng OAuth Web Client ID và scope drive.file; API key Google được lưu trong trình duyệt của thiết bị này; khi triển khai công khai nên giới hạn key theo HTTP referrer/domain.</div>
   <div class="settings-drive-section"><h3>☁️ Google Drive Sync</h3><p class="hint">Kết nối, kiểm tra và đồng bộ bản dịch trên các thiết bị.</p>    <div class="drive-box">
       <div class="drive-title">☁️ Google Drive Sync</div>
-      <div class="drive-status" id="driveStatus">Chưa cấu hình Google Drive.</div>
+      <div class="drive-status" id="driveStatus">Chưa cấu hình Google Drive.</div><p class="hint">V14.16: Tự thử khôi phục kết nối khi mở ứng dụng và quay lại tab. Google có thể yêu cầu xác nhận lại khi phiên đăng nhập hết hạn. Nút Ngắt kết nối sẽ tắt tự kết nối.</p>
       <div id="driveSyncDashboard" style="margin:12px 0;padding:12px;border:1px solid #363636;border-radius:13px;background:#121212;font-size:13px;line-height:1.8">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><strong>Trạng thái sao lưu</strong><strong id="driveSyncBadge" style="color:#aaa">● Chưa kiểm tra</strong></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:9px 0"><div>Bản dịch trên máy<br><strong id="driveLocalCount" style="font-size:20px">—</strong></div><div>Tệp trên Drive<br><strong id="driveRemoteCount" style="font-size:20px">—</strong></div></div>
@@ -439,7 +440,7 @@ body > header{display:none!important}
       <div class="drive-actions">
         <button class="btn primary" id="connectDriveBtn">Kết nối Drive</button>
         <button class="btn" id="syncDriveBtn">Đồng bộ ngay</button>
-        <button class="btn" id="disconnectDriveBtn">Ngắt Drive</button>
+        <button class="btn" id="disconnectDriveBtn">⏏ Ngắt kết nối Drive</button>
       </div>
     </div>
   </div>
@@ -922,34 +923,59 @@ async function verifyDriveSync(){
  finally{driveSyncBusy=false;renderDriveSyncDashboard();}
 }
 
+const DRIVE_KEEP_KEY='sbl_drive_auto_reconnect_v1416';
+let driveAutoBusy=false,driveAutoLastAttempt=0,driveAutoRetry=0;
+function driveAutoEnabled(){return localStorage.getItem(DRIVE_KEEP_KEY)!=='off';}
 function driveTokenValid(){return !!googleDriveToken && Date.now()<googleDriveExpiresAt;}
 function updateDriveStatus(msg=''){
   if(typeof renderDriveSyncDashboard==='function')renderDriveSyncDashboard();
-  const el=$('driveStatus'); if(!el)return;
+  const el=$('driveStatus');if(!el)return;
   if(msg){el.textContent=msg;return;}
-  if(driveTokenValid()) el.textContent='Đã kết nối Google Drive • tự lưu bản dịch đã dịch.';
-  else if(googleClientId) el.textContent='Đã có Google Client ID • bấm Kết nối Drive.';
+  if(driveTokenValid())el.textContent='✓ Google Drive đang kết nối · Tự khôi phục khi mở lại ứng dụng.';
+  else if(!driveAutoEnabled())el.textContent='Đã ngắt kết nối theo yêu cầu. Nhấn Kết nối Drive để sử dụng lại.';
+  else if(driveAutoBusy)el.textContent='Đang thử khôi phục kết nối Google Drive...';
+  else if(googleClientId)el.textContent='Đã ghi nhớ Google Drive · đang chờ khôi phục quyền truy cập (có thể cần xác nhận Google).';
   else el.textContent='Chưa có Google OAuth Client ID. Vào Cài đặt để nhập.';
 }
 function initGoogleTokenClient(){
   if(!googleClientId||!window.google?.accounts?.oauth2)return false;
   googleTokenClient=google.accounts.oauth2.initTokenClient({client_id:googleClientId,scope:'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly',include_granted_scopes:false,callback:(resp)=>{
-    if(resp.error){updateDriveStatus('Google Drive: '+resp.error);return;}
-    googleDriveToken=resp.access_token||'';googleDriveExpiresAt=Date.now()+((resp.expires_in||3600)-60)*1000;
-    localStorage.setItem(LS.gtoken,googleDriveToken);localStorage.setItem(LS.gexp,String(googleDriveExpiresAt));updateDriveStatus();updateSharedDriveUI();toast('Đã kết nối Google Drive.');
+    driveAutoBusy=false;
+    if(resp.error){if(resp.error!=='interaction_required'&&resp.error!=='consent_required'&&resp.error!=='login_required')console.warn('Google Drive OAuth:',resp.error);updateDriveStatus('Google Drive cần xác nhận lại. Nhấn Kết nối Drive nếu không tự khôi phục được.');return;}
+    googleDriveToken=resp.access_token||'';googleDriveExpiresAt=Date.now()+Math.max(60,(resp.expires_in||3600)-60)*1000;
+    localStorage.setItem(LS.gtoken,googleDriveToken);localStorage.setItem(LS.gexp,String(googleDriveExpiresAt));
+    localStorage.setItem(DRIVE_KEEP_KEY,'on');driveAutoRetry=0;updateDriveStatus();updateSharedDriveUI();
   }});return true;
 }
 function connectGoogleDrive(){
   if(!googleClientId){openSettings();toast('Hãy nhập Google OAuth Client ID trước.');return;}
   if(!initGoogleTokenClient()){toast('Google Identity Services chưa tải xong, hãy thử lại sau vài giây.');return;}
+  localStorage.setItem(DRIVE_KEEP_KEY,'on');driveAutoBusy=true;updateDriveStatus();
   googleTokenClient.requestAccessToken({prompt:'consent'});
 }
-function disconnectGoogleDrive(){driveRemoteKnown=null;googleDriveToken='';googleDriveExpiresAt=0;localStorage.removeItem(LS.gtoken);localStorage.removeItem(LS.gexp);updateDriveStatus();updateSharedDriveUI();toast('Đã ngắt Google Drive.');}
+function disconnectGoogleDrive(){
+  driveRemoteKnown=null;driveAutoBusy=false;localStorage.setItem(DRIVE_KEEP_KEY,'off');
+  const old=googleDriveToken;googleDriveToken='';googleDriveExpiresAt=0;
+  localStorage.removeItem(LS.gtoken);localStorage.removeItem(LS.gexp);
+  if(old&&window.google?.accounts?.oauth2?.revoke)google.accounts.oauth2.revoke(old,()=>{});
+  updateDriveStatus();updateSharedDriveUI();toast('Đã ngắt Google Drive. Ứng dụng sẽ không tự kết nối lại.');
+}
+function restoreGoogleDriveSession(){
+  if(!driveAutoEnabled()||driveTokenValid()||driveAutoBusy||!googleClientId)return;
+  if(Date.now()-driveAutoLastAttempt<30000)return;
+  if(!initGoogleTokenClient()){
+    if(driveAutoRetry++<10)setTimeout(restoreGoogleDriveSession,1500);
+    return;
+  }
+  driveAutoLastAttempt=Date.now();driveAutoBusy=true;updateDriveStatus();
+  try{googleTokenClient.requestAccessToken({prompt:''});}
+  catch(e){driveAutoBusy=false;updateDriveStatus('Google Drive cần xác nhận lại: '+e.message);}
+}
 async function driveApi(url,opt={}){
   if(!driveTokenValid())throw new Error('Google Drive chưa kết nối hoặc phiên đã hết hạn.');
   const headers={Authorization:'Bearer '+googleDriveToken,...(opt.headers||{})};
   const r=await fetch(url,{...opt,headers});const text=await r.text();let data=null;try{data=text?JSON.parse(text):null}catch(_){data=text}
-  if(!r.ok){if(r.status===401){disconnectGoogleDrive();}throw new Error(data?.error?.message||('Google Drive HTTP '+r.status));}return data;
+  if(!r.ok){if(r.status===401){googleDriveToken='';googleDriveExpiresAt=0;localStorage.removeItem(LS.gtoken);localStorage.removeItem(LS.gexp);updateDriveStatus('Phiên Google Drive hết hạn. Đang thử kết nối lại...');setTimeout(restoreGoogleDriveSession,500);}throw new Error(data?.error?.message||('Google Drive HTTP '+r.status));}return data;
 }
 function readableDriveName(song,language,kind='translation'){
  const clean=v=>String(v||'').replace(/[\\/:*?"<>|\x00-\x1f]/g,' ').replace(/\s+/g,' ').trim().slice(0,72);
@@ -1380,7 +1406,7 @@ function openSettings(){ updateSharedDriveUI(); $('spotifyClientId').value=spoti
 function closeSettings(){ $('settingsModal').classList.remove('open'); }
 function openUtilityDrawer(){ $('utilityDrawer').classList.add('open'); $('utilityDrawer').setAttribute('aria-hidden','false'); $('utilityOverlay').classList.add('open'); }
 function closeUtilityDrawer(){ $('utilityDrawer').classList.remove('open'); $('utilityDrawer').setAttribute('aria-hidden','true'); $('utilityOverlay').classList.remove('open'); }
-function saveSettings(){spotifyClientId=$('spotifyClientId').value.trim();googleApiKey=$('googleApiKey').value.trim();googleClientId=$('googleClientId').value.trim();const lang=$('defaultLang').value;localStorage.setItem(LS.client,spotifyClientId);localStorage.setItem(LS.google,googleApiKey);localStorage.setItem(LS.gclient,googleClientId);localStorage.setItem(LS.lang,lang);$('targetLang').value=lang;closeSettings();updateApiState();initGoogleTokenClient();updateDriveStatus();toast('Đã lưu cài đặt.');}
+function saveSettings(){spotifyClientId=$('spotifyClientId').value.trim();googleApiKey=$('googleApiKey').value.trim();googleClientId=$('googleClientId').value.trim();const lang=$('defaultLang').value;localStorage.setItem(LS.client,spotifyClientId);localStorage.setItem(LS.google,googleApiKey);localStorage.setItem(LS.gclient,googleClientId);localStorage.setItem(LS.lang,lang);$('targetLang').value=lang;closeSettings();updateApiState();initGoogleTokenClient();restoreGoogleDriveSession();updateDriveStatus();toast('Đã lưu cài đặt.');}
 function updateApiState(){ $('apiState').textContent=googleApiKey?'Google dịch: đã cấu hình':'Google dịch: chưa có API key'; }
 
 $('lyrics').addEventListener('click',handleLyricsClick);
@@ -1501,6 +1527,7 @@ function importTranslationLines(text){
 const lrcFolderIndex=new Map();
 function normAudioName(n){return String(n||'').normalize('NFKC').replace(/\.[^.]+$/,'').replace(/\s*[-–]\s*/g,' ').replace(/[^\p{L}\p{N}]+/gu,' ').toLocaleLowerCase().trim();}
 function lrcMatchScore(audio,lrc){const a=normAudioName(audio),b=normAudioName(lrc);if(!a||!b)return 0;if(a===b)return 100;if(a.includes(b)||b.includes(a))return 70;const x=new Set(a.split(' ').filter(t=>t.length>1)),y=new Set(b.split(' ').filter(t=>t.length>1));const shared=[...x].filter(t=>y.has(t)).length;return Math.round(60*shared/Math.max(x.size,y.size,1));}
+$('localLyricFile').addEventListener('change',()=>{$('localTranslationFile').value='';});
 $('localScanLrc').onclick=()=>$('localLrcFolder').click();
 $('localLrcFolder').addEventListener('change',async e=>{
  const files=[...e.target.files].filter(f=>/\.lrc$/i.test(f.name));lrcFolderIndex.clear();for(const f of files)lrcFolderIndex.set(f.name,f);
@@ -1528,7 +1555,7 @@ $('localImportApply').onclick=async()=>{
   lyrics=[];activeIndex=-1;
   if(lyricText.trim()){applyManualContent(lyricText);localStorage.setItem(manualKey(),JSON.stringify({text:lyricText,offset:0,savedAt:Date.now()}));}
   else{const cached=manualSaved();if(cached)applyManualContent(cached.text,cached.offset);else{$('lyrics').innerHTML='<div class="empty">Chưa có lời. Mở Nguồn lời để nhập LRC/TXT.</div>';}}
-  if(translationText.trim()&&lyrics.length){const n=importTranslationLines(translationText);renderLyrics();saveTranslationCache();$('localImportStatus').textContent='Đã ghép '+n+' dòng bản dịch.';}
+  if(translationText.trim()&&lyrics.length&&!lyrics.some(x=>x.translation)){const n=importTranslationLines(translationText);renderLyrics();saveTranslationCache();$('localImportStatus').textContent='Đã ghép '+n+' dòng bản dịch từ dữ liệu cũ.';}
   else if(lyrics.length&&!lyrics.some(x=>x.translation))await restoreTranslationsSmart();
   $('syncStatus').textContent='[Nhạc trên thiết bị'+(lyrics.some(x=>Number.isFinite(x.time))?' • lời đồng bộ':' • chưa có LRC')+']';
   hideLocalImport();switchTab('now');
@@ -1591,13 +1618,13 @@ async function openDriveMusicBundle(manifest){
    if(content.trim().startsWith('{')){const data=JSON.parse(content);if(Array.isArray(data.lyrics)){lyrics=data.lyrics;renderLyrics();if(data.song?.title)$('trackTitle').textContent=data.song.title;toast('Đã mở lời và bản dịch từ Drive.');hideLocalImport();return;}}
    setLocalFileInput('localLyricFile',lf);
   }
-  if(files.translation)setLocalFileInput('localTranslationFile',await downloadDriveMusicFile(files.translation));
+  if(files.translation&&!files.lyrics)setLocalFileInput('localTranslationFile',await downloadDriveMusicFile(files.translation));else $('localTranslationFile').value='';
   driveMusicStatus('Đã chọn lời và bản dịch từ Drive. Hãy chọn thêm tệp âm thanh trên thiết bị để phát.');return;
  }
  driveMusicStatus('Đang tải bài hát từ Google Drive...');
  setLocalFileInput('localAudioFile',await downloadDriveMusicFile(files.audio));
  if(files.lyrics)setLocalFileInput('localLyricFile',await downloadDriveMusicFile(files.lyrics));else $('localLyricFile').value='';
- if(files.translation)setLocalFileInput('localTranslationFile',await downloadDriveMusicFile(files.translation));else $('localTranslationFile').value='';
+ if(files.translation&&!files.lyrics)setLocalFileInput('localTranslationFile',await downloadDriveMusicFile(files.translation));else $('localTranslationFile').value='';
  driveMusicStatus('Đã tải đủ tệp. Đang mở bài hát...');$('localImportApply').click();
 }
 // V14.11: the same canonical lyrics-with-translation JSON is written and read.
@@ -1706,19 +1733,21 @@ $('driveConvertLrc').onclick=async()=>{
  try{await convertDriveJsonToLrcBatch();await refreshDriveMusicList();}
  catch(e){driveMusicStatus('Lỗi chuyển đổi: '+e.message);}finally{btn.disabled=false;}
 };
-$('driveMusicUpload').onclick=async()=>{try{$('driveMusicUpload').disabled=true;await uploadMusicBundle($('localAudioFile').files[0],$('localLyricFile').files[0],$('localTranslationFile').files[0]);}catch(e){driveMusicStatus('Lỗi: '+e.message);}finally{$('driveMusicUpload').disabled=false;}};
+$('driveMusicUpload').onclick=async()=>{try{$('driveMusicUpload').disabled=true;await uploadMusicBundle($('localAudioFile').files[0],$('localLyricFile').files[0],null);}catch(e){driveMusicStatus('Lỗi: '+e.message);}finally{$('driveMusicUpload').disabled=false;}};
 $('driveLyricsSave').onclick=async()=>{try{await exportLyricsDrive();driveMusicStatus($('exportLyricsStatus').textContent);if($('exportLyricsStatus').textContent.startsWith('Đã lưu'))await refreshDriveMusicList();}catch(e){driveMusicStatus('Lỗi: '+e.message);}};
 $('driveMusicRefresh').onclick=()=>refreshDriveMusicList().catch(e=>driveMusicStatus('Lỗi: '+e.message));
 $('driveRenameFiles').onclick=async()=>{if(!confirm('Đổi tên các tệp JSON cũ theo tên bài hát và ca sĩ? Tệp không xác định được tên sẽ giữ nguyên.'))return;const b=$('driveRenameFiles');b.disabled=true;try{await renameExistingDriveLyrics();}catch(e){driveMusicStatus('Lỗi đổi tên: '+e.message);}finally{b.disabled=false;}};
 
 async function init(){
-  updateSharedDriveUI();const lang=localStorage.getItem(LS.lang)||'vi';$('targetLang').value=lang;$('quickLang').value=lang;$('defaultLang').value=lang;$('redirectHint').textContent=redirectUri();updateApiState();updateDriveStatus();setTimeout(()=>{initGoogleTokenClient();updateDriveStatus();},600);
+  updateSharedDriveUI();const lang=localStorage.getItem(LS.lang)||'vi';$('targetLang').value=lang;$('quickLang').value=lang;$('defaultLang').value=lang;$('redirectHint').textContent=redirectUri();updateApiState();updateDriveStatus();setTimeout(()=>{restoreGoogleDriveSession();updateDriveStatus();},700);
   const q=new URLSearchParams(location.search),code=q.get('code'),state=q.get('state'),error=q.get('error');
   if(error){toast('Spotify: '+error);history.replaceState({},'',location.pathname);}
   if(code){try{const expected=localStorage.getItem(LS.state);if(expected&&state!==expected)throw new Error('OAuth state không khớp');await exchangeCode(code);history.replaceState({},'',location.pathname);toast('Đã kết nối Spotify.');}catch(e){console.error(e);toast(e.message);}}
   updateLoginUI();if(accessToken||refreshToken){startPolling();initWebPlayer();}
 }
 init();
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)restoreGoogleDriveSession();});
+window.addEventListener('focus',restoreGoogleDriveSession);
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(console.error));
 }
