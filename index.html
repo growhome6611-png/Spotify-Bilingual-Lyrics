@@ -236,6 +236,7 @@ body > header{display:none!important}
         <label class="quick-lang-wrap" title="Chọn ngôn ngữ dịch"><span aria-hidden="true">🌍</span><select id="quickLang" aria-label="Chọn ngôn ngữ dịch"></select></label>
         <button class="player-icon-btn" id="quickSyncBtn" title="Đồng bộ tất cả bản dịch với Google Drive" aria-label="Đồng bộ tất cả bản dịch">☁️</button>
         <button class="player-icon-btn" id="quickDriveBtn" title="Kết nối hoặc kiểm tra Google Drive" aria-label="Kết nối hoặc kiểm tra Google Drive">🔗</button>
+        <button class="player-icon-btn" id="quickExportBtn" title="Lưu lời và bản dịch về máy hoặc Google Drive" aria-label="Lưu lời và bản dịch">⬇️</button>
         <button class="player-icon-btn" id="quickSettingsBtn" title="Cài đặt" aria-label="Cài đặt">⚙️</button>
         <button class="player-icon-btn" id="activatePlayerBtn" title="Kích hoạt trình phát Spotify" aria-label="Kích hoạt trình phát Spotify" data-ready="false">🎧</button>
         <button class="source-icon-btn" id="openSourceBtn" title="Nguồn lời bài hát • Thêm / sửa lời" aria-label="Mở nguồn lời bài hát">📄</button>
@@ -387,6 +388,8 @@ body > header{display:none!important}
     <div class="lyrics-play-row"><button class="lyrics-play-big" id="fullPlayPauseBtn" disabled>▶</button></div>
   </div>
 </section>
+
+<div class="modal" id="exportLyricsModal"><div class="dialog" style="max-width:440px"><h3>💾 Lưu lời bài hát và bản dịch</h3><p class="hint">Lưu bài đang mở, gồm lời gốc, Pinyin (nếu có) và bản dịch hiện tại. Không bao gồm tệp âm thanh.</p><div style="display:grid;gap:10px;margin:14px 0"><button class="btn primary" id="exportLyricsDriveBtn">☁️ Lưu lên Google Drive</button><button class="btn" id="exportLyricsDeviceBtn">⬇️ Tải lời và bản dịch về máy (.txt)</button></div><div id="exportLyricsStatus" class="hint" aria-live="polite"></div><div class="dialog-actions"><button class="btn" id="exportLyricsCloseBtn">Đóng</button></div></div></div>
 
 <div class="modal" id="settingsModal"><div class="dialog">
   <h3>⚙️ Cài đặt</h3>
@@ -970,6 +973,23 @@ async function restoreTranslationFromDrive(){
 }
 async function restoreTranslationsSmart(){const local=restoreCachedTranslations();if(local){updateDriveStatus();return true;}const drive=await restoreTranslationFromDrive();return drive;}
 async function syncDriveNow(){if(!driveTokenValid()){connectGoogleDrive();return;}if(hasAnyTranslation())await uploadCurrentTranslationToDrive();else await restoreTranslationFromDrive();await verifyDriveSync();}
+
+// V14.10: explicit current-song export to device and Drive (no audio).
+function exportLyricsFilename(){const m=currentSongMeta();return ((m.artist||'')+' - '+(m.title||'')).replace(/[\\/:*?"<>|\x00-\x1f]/g,'_').trim().slice(0,100)||'loi_bai_hat';}
+async function exportLyricsRows(){
+ if(!lyrics.length)throw Error('Bài hát chưa có lời để lưu.');
+ let py=null;
+ if(lyrics.some(x=>hasHan(x.text))){try{py=await loadPinyin();}catch(e){console.warn('Pinyin không khả dụng:',e);}}
+ return lyrics.map(x=>{let pinyin='';if(hasHan(x.text)){pinyin=localStorage.getItem(pinyinKey(x.text))||'';if(!pinyin&&py){try{pinyin=py.pinyin(x.text,{toneType:'symbol',type:'string'});}catch(_){}}}return {time:x.time,text:x.text||'',pinyin,translation:x.translation||''};});
+}
+function exportLyricsText(rows){const m=currentSongMeta();const stamp=t=>{const n=Number(t);if(!Number.isFinite(n))return '';const sec=Math.max(0,Math.floor(n/1000));return '['+String(Math.floor(sec/60)).padStart(2,'0')+':'+String(sec%60).padStart(2,'0')+'] ';};return [m.title+' — '+m.artist,'',...rows.flatMap(r=>[stamp(r.time)+r.text,r.pinyin?('Pinyin: '+r.pinyin):null,r.translation?('Dịch: '+r.translation):null,''].filter(x=>x!==null))].join('\n');}
+function exportLyricsModalOpen(){$('exportLyricsStatus').textContent='';$('exportLyricsModal').classList.add('open');}
+async function exportLyricsDevice(){const status=$('exportLyricsStatus');try{const rows=await exportLyricsRows();const blob=new Blob(['\ufeff'+exportLyricsText(rows)],{type:'text/plain;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=exportLyricsFilename()+'.txt';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),15000);status.textContent='Đã yêu cầu trình duyệt lưu tệp TXT về máy.';}catch(e){status.textContent=e.message;}}
+async function exportLyricsDrive(){const status=$('exportLyricsStatus'),btn=$('exportLyricsDriveBtn');if(!driveTokenValid()){status.textContent='Hãy kết nối Google Drive trong Cài đặt trước.';return;}if(sharedDriveFolderId){status.textContent='Thư viện chia sẻ chỉ đọc. Chuyển về thư viện cá nhân để tải lên.';return;}btn.disabled=true;status.textContent='Đang chuẩn bị lời và bản dịch…';try{const rows=await exportLyricsRows();const folder=await ensureDriveFolder();const filename=driveSafeName().replace(/\.json$/,'__lyrics.json');const q=encodeURIComponent(`name='${filename.replace(/'/g,"\\'")}' and '${folder}' in parents and trashed=false`);const result=await driveApi('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name)&pageSize=10');const existing=result?.files?.[0];const payload={version:2,type:'lyrics-with-translation',trackKey:currentTrackKey,language:$('targetLang').value,song:currentSongMeta(),savedAt:new Date().toISOString(),lyrics:rows};await uploadMultipartDrive(existing?{name:filename}:{name:filename,parents:[folder]},payload,existing?.id||'');status.textContent='Đã lưu lời gốc, Pinyin và bản dịch lên thư mục Spotify Bilingual Lyrics trên Drive.';toast('Đã lưu lời và bản dịch lên Drive.');}catch(e){status.textContent='Không lưu được: '+e.message;}finally{btn.disabled=false;}}
+$('quickExportBtn').onclick=exportLyricsModalOpen;
+$('exportLyricsCloseBtn').onclick=()=>$('exportLyricsModal').classList.remove('open');
+$('exportLyricsDeviceBtn').onclick=exportLyricsDevice;
+$('exportLyricsDriveBtn').onclick=exportLyricsDrive;
 
 // V13.6: normalize colloquial forms, context-sensitive POS, offline fallbacks and cache.
 let currentDictInfo=null,dictRequestId=0;
