@@ -272,7 +272,7 @@ body > header{display:none!important}
     <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><strong>📁 Nhạc trên thiết bị</strong><button class="btn" id="closeLocalImport">✕</button></div>
     <p style="font-size:.84rem;color:#bbb">Chọn tệp âm thanh của bạn. Lời LRC/TXT và bản dịch có thể nhập riêng. Tệp âm thanh chỉ được phát trên thiết bị, không tải lên máy chủ.</p>
     <label>1. Nhạc MP3/M4A/WAV/FLAC<input id="localAudioFile" type="file" accept="audio/*,.mp3,.m4a,.wav,.flac,.ogg" style="display:block;width:100%;margin:8px 0 14px"></label>
-    <label>2. Lời bài hát LRC/TXT<input id="localLyricFile" type="file" accept=".lrc,.txt,text/plain" style="display:block;width:100%;margin:8px 0 14px"></label>
+    <label>2. Lời bài hát LRC mở rộng/TXT<input id="localLyricFile" type="file" accept=".lrc,.txt,text/plain" style="display:block;width:100%;margin:8px 0 14px"></label>
     <label>3. Bản dịch LRC/TXT (mỗi dòng tương ứng với lời gốc)<input id="localTranslationFile" type="file" accept=".lrc,.txt,text/plain" style="display:block;width:100%;margin:8px 0 14px"></label>
     <div style="border-top:1px solid #444;margin:15px 0;padding-top:12px">
       <strong>☁ Google Drive · Thư viện lời và nhạc</strong>
@@ -281,11 +281,12 @@ body > header{display:none!important}
         <button class="btn" id="driveMusicUpload" type="button">☁ Lưu 3 tệp đã chọn lên Drive</button>
         <button class="btn" id="driveLyricsSave" type="button">📄 Lưu lời và bản dịch đang hiển thị</button>
         <button class="btn" id="driveMusicRefresh" type="button">↻ Xem lời và nhạc trên Drive</button>
+        <button class="btn" id="driveRenameFiles" type="button">✏️ Đổi tên tệp cũ theo tên bài hát</button>
       </div>
       <div id="driveMusicList" style="max-height:230px;overflow:auto;display:grid;gap:8px"></div>
       <p id="driveMusicStatus" style="font-size:.8rem;color:#bbb" aria-live="polite"></p>
     </div>
-    <button class="btn primary" id="localImportApply">▶ Mở bài hát trên thiết bị</button>
+    <button class="btn" id="localScanLrc">🔎 Quét LRC trên máy</button><button class="btn" id="localScanDriveLrc">☁️ Tìm LRC trên Drive</button><input id="localLrcFolder" type="file" accept=".lrc" webkitdirectory multiple style="display:none"><div id="localScanResults" style="font-size:.8rem;color:#bbb;margin:8px 0" aria-live="polite"></div><button class="btn primary" id="localImportApply">▶ Mở bài hát trên thiết bị</button>
     <button class="btn" id="localExitBtn">Trở lại Spotify</button>
     <p id="localImportStatus" style="font-size:.8rem;color:#bbb" aria-live="polite"></p>
   </section>
@@ -564,7 +565,7 @@ async function fetchCurrentlyPlaying(force=false){
     playerPositionMs=progressAnchorMs;playerDurationMs=Number(d.item.duration_ms)||0;playerTrackUri=d.item.uri||'';lastPlaybackPollAt=Date.now();
     activePlaybackDeviceId=d.device?.id||'';activePlaybackIsWeb=!!webDeviceId&&activePlaybackDeviceId===webDeviceId;
     renderProgressUI(playerPositionMs,playerDurationMs);$('playPauseBtn').textContent=isPlaying?'❚❚':'▶';$('playPauseBtn').disabled=false;$('prevBtn').disabled=false;$('nextBtn').disabled=false;
-    if(force||id!==lastTrackId){ lastTrackId=id; refreshLikeState(d.item.id); currentTrackKey=id||name+'|'+artist; await fetchLyrics(name,artist,album,d.item.duration_ms||0); }
+    if(force||id!==lastTrackId){ lastTrackId=id; refreshLikeState(d.item.id); currentTrackKey=id||name+'|'+artist; rememberSongForDrive(); await fetchLyrics(name,artist,album,d.item.duration_ms||0); }
     syncLyrics(getEstimatedProgress()/1000);
   }catch(e){ console.error(e);$('syncStatus').textContent='[Lỗi kết nối Spotify]'; }
 }
@@ -727,7 +728,17 @@ async function fetchLyrics(track,artist,album,durationMs,forceSearch=false){
  $('openLyricPickerInline').onclick=()=>{openSourceSheet();renderLyricCandidates()};
 }
 
-function parseLrc(text){ const arr=[];const re=/\[(\d{1,3}):(\d{2})(?:\.(\d{1,3}))?\]\s*(.*)/; for(const raw of text.split(/\r?\n/)){const m=raw.match(re);if(!m)continue;const frac=m[3]?Number('0.'+m[3]):0;const t=Number(m[1])*60+Number(m[2])+frac;const val=m[4].trim();if(val)arr.push({time:t,text:val,translation:''});} lyrics=arr.sort((a,b)=>a.time-b.time);renderLyrics(); }
+function parseLrc(text){
+ const arr=[],re=/^\s*\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]\s*(.*)$/;
+ for(const raw of String(text||'').split(/\r?\n/)){
+  const m=raw.match(re);if(!m)continue;
+  const t=Number(m[1])*60+Number(m[2])+Number('0.'+(m[3]||'0'));let val=m[4].trim();if(!val)continue;
+  const tag=val.match(/^\[(py|tr)\]\s*(.*)$/i);
+  if(tag){const field=tag[1].toLowerCase()==='py'?'pinyin':'translation';const line=[...arr].reverse().find(x=>Math.abs(x.time-t)<.015);if(line)line[field]=tag[2];continue;}
+  arr.push({time:t,text:val,pinyin:'',translation:''});
+ }
+ lyrics=arr.sort((a,b)=>a.time-b.time);renderLyrics();
+}
 function parsePlain(text){ lyrics=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).map(s=>({time:null,text:s,translation:''}));renderLyrics(false); }
 // V13.9: Chinese text uses word segmentation rather than whitespace splitting.
 const hasHan=text=>/[\u3400-\u9fff]/u.test(String(text||''));
@@ -826,6 +837,15 @@ async function runDriveBatch(mode='both'){
  try{
   const files=await driveListTranslationFiles(),byName=new Map();
   files.forEach(f=>{if(!byName.has(f.name))byName.set(f.name,f);});
+  // Recognize human-readable filenames by the stable trackKey stored in their JSON.
+  for(const f of files){if(!f.name.endsWith('.json')||/^[a-zA-Z0-9_-]{20,}__/.test(f.name))continue;
+   try{const data=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(f.id)+'?alt=media');
+    if(data?.trackKey&&data?.language&&data?.type!=='lyrics-with-translation'){
+     const alias=driveFileNameForKey('lyric_trans_'+data.trackKey+'_'+data.language);
+     if(alias&&!byName.has(alias))byName.set(alias,f);
+    }
+   }catch(e){console.warn('Không đọc được định danh tệp',f.name,e);}
+  }
   const keys=localTranslationKeys(),localByName=new Map();
   for(const key of keys){const name=driveFileNameForKey(key);if(name&&!localByName.has(name))localByName.set(name,key);}
   const meta=driveSyncMeta(),verified={...(meta.verified||{})},remoteStamps={...(meta.remoteStamps||{})};
@@ -885,7 +905,7 @@ async function runDriveBatch(mode='both'){
  }catch(e){driveSyncError=e.message||String(e);toast('Đồng bộ hàng loạt thất bại: '+driveSyncError);}
  finally{driveBatchRunning=false;upBtn.disabled=false;downBtn.disabled=false;renderDriveSyncDashboard();}
 }
-async function driveCountFiles(){const folder=await ensureDriveFolder();let page='',count=0;do{const q=encodeURIComponent(`'${folder}' in parents and trashed=false`);const d=await driveApi('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=nextPageToken,files(id,name)&pageSize=1000'+(page?'&pageToken='+encodeURIComponent(page):''));count+=(d.files||[]).filter(f=>f.name?.endsWith('.json')).length;page=d.nextPageToken||'';}while(page);driveRemoteKnown=count;return count;}
+async function driveCountFiles(){const folder=await ensureDriveFolder();let page='',count=0;do{const q=encodeURIComponent(`'${folder}' in parents and trashed=false`);const d=await driveApi('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=nextPageToken,files(id,name)&pageSize=1000'+(page?'&pageToken='+encodeURIComponent(page):''));count+=(d.files||[]).filter(f=>f.name?.endsWith('.json')&&!f.name.endsWith('__lyrics.json')).length;page=d.nextPageToken||'';}while(page);driveRemoteKnown=count;return count;}
 async function verifyDriveSync(){
  if(!driveTokenValid()){updateDriveStatus('Chưa kết nối Drive. Hãy bấm Kết nối Drive trước.');renderDriveSyncDashboard();return;}
  if(driveSyncBusy)return;driveSyncBusy=true;driveSyncError='';renderDriveSyncDashboard();
@@ -930,7 +950,50 @@ async function driveApi(url,opt={}){
   const r=await fetch(url,{...opt,headers});const text=await r.text();let data=null;try{data=text?JSON.parse(text):null}catch(_){data=text}
   if(!r.ok){if(r.status===401){disconnectGoogleDrive();}throw new Error(data?.error?.message||('Google Drive HTTP '+r.status));}return data;
 }
-function driveSafeName(){return (currentTrackKey||'track').replace(/[^a-zA-Z0-9._-]+/g,'_').slice(0,110)+'__'+$('targetLang').value+'.json';}
+function readableDriveName(song,language,kind='translation'){
+ const clean=v=>String(v||'').replace(/[\\/:*?"<>|\x00-\x1f]/g,' ').replace(/\s+/g,' ').trim().slice(0,72);
+ const title=clean(song?.title),artist=clean(song?.artist);
+ if(!title||title==='Bài hát'||!artist||artist==='Nghệ sĩ')return '';
+ return (title+' - '+artist+'__'+language+(kind==='lyrics'?'__lyrics':'')+'.json').slice(0,190);
+}
+function rememberSongForDrive(){if(!currentTrackKey)return;const m=currentSongMeta();if(!m.title||!m.artist)return;try{localStorage.setItem('sbl_songmeta_'+currentTrackKey,JSON.stringify(m));}catch(_){}}
+function songForDriveKey(key){try{return JSON.parse(localStorage.getItem('sbl_songmeta_'+key)||'null');}catch(_){return null;}}
+function driveSafeName(){return readableDriveName(currentSongMeta(),$('targetLang').value)||((currentTrackKey||'track').replace(/[^a-zA-Z0-9._-]+/g,'_').slice(0,110)+'__'+$('targetLang').value+'.json');}
+async function resolveSongForDrive(trackKey){
+ const saved=songForDriveKey(trackKey);if(saved?.title&&saved?.artist)return saved;
+ if(trackKey===currentTrackKey){rememberSongForDrive();return currentSongMeta();}
+ if(/^[a-zA-Z0-9]{22}$/.test(trackKey)&&(accessToken||refreshToken)){
+  try{const d=await spotifyApi('/tracks/'+encodeURIComponent(trackKey));if(d?.name){const m={title:d.name,artist:(d.artists||[]).map(a=>a.name).join(', ')};localStorage.setItem('sbl_songmeta_'+trackKey,JSON.stringify(m));return m;}}catch(e){console.warn('Không tra được tên bài',trackKey,e);}
+ }
+ return null;
+}
+async function renameDriveFileSafely(file,desired,folder,occupied){
+ if(!desired||file.name===desired)return false;
+ if(occupied.has(desired))return false;
+ const result=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(file.id)+'?fields=id,name',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:desired})});
+ if(result?.name!==desired)throw Error('Không xác nhận được tên mới');
+ occupied.delete(file.name);occupied.add(desired);file.name=desired;return true;
+}
+async function renameExistingDriveLyrics(){
+ if(sharedDriveFolderId)throw Error('Thư viện chia sẻ chỉ đọc; không thể đổi tên.');
+ const root=await ensureDriveFolder(),files=(await listDriveFolderFiles(root)).filter(f=>f.name?.endsWith('.json'));
+ const occupied=new Set(files.map(f=>f.name));let renamed=0,unresolved=0,duplicates=0;
+ for(const f of files){
+  try{
+   const data=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(f.id)+'?alt=media');
+   if(!Array.isArray(data?.lyrics)||!data?.trackKey){unresolved++;continue;}
+   const song=data.song?.title&&data.song?.artist?data.song:await resolveSongForDrive(data.trackKey);
+   const language=data.language||'vi',kind=data.type==='lyrics-with-translation'||f.name.endsWith('__lyrics.json')?'lyrics':'translation';
+   const name=readableDriveName(song,language,kind);
+   if(!name){unresolved++;continue;}
+   if(name!==f.name&&occupied.has(name)){duplicates++;continue;}
+   if(await renameDriveFileSafely(f,name,root,occupied))renamed++;
+  }catch(e){unresolved++;console.warn('Không đổi được tên',f.name,e);}
+ }
+ driveMusicStatus('Đã đổi tên '+renamed+' tệp. Chưa xác định tên: '+unresolved+'. Trùng tên (giữ nguyên): '+duplicates+'. Không xóa dữ liệu.');
+ await refreshDriveMusicList();
+}
+
 async function ensureDriveFolder(){
   if(sharedDriveFolderId)return sharedDriveFolderId;
   if(googleDriveFolderId)return googleDriveFolderId;
@@ -943,7 +1006,11 @@ async function ensureDriveFolder(){
 async function findDriveTranslationFile(){
   if(!driveTokenValid()||!currentTrackKey)return null;const folder=await ensureDriveFolder();const name=driveSafeName().replace(/'/g,"\\'");
   const q=encodeURIComponent(`name='${name}' and '${folder}' in parents and trashed=false`);
-  const d=await driveApi('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc&pageSize=5');return d?.files?.[0]||null;
+  const d=await driveApi('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc&pageSize=5');if(d?.files?.[0])return d.files[0];
+ const legacy=(currentTrackKey||'track').replace(/[^a-zA-Z0-9._-]+/g,'_').slice(0,110)+'__'+$('targetLang').value+'.json';
+ if(legacy===name)return null;
+ const q2=encodeURIComponent(`name='${legacy}' and '${folder}' in parents and trashed=false`);
+ const d2=await driveApi('https://www.googleapis.com/drive/v3/files?q='+q2+'&fields=files(id,name,modifiedTime)&pageSize=5');return d2?.files?.[0]||null;
 }
 function currentTranslationPayload(){return {version:1,trackKey:currentTrackKey,language:$('targetLang').value,savedAt:new Date().toISOString(),song:currentSongMeta(),lyrics:lyrics.map(x=>({time:x.time,text:x.text,translation:x.translation||''}))};}
 async function uploadMultipartDrive(meta,payload,fileId=''){
@@ -955,7 +1022,7 @@ async function uploadMultipartDrive(meta,payload,fileId=''){
 async function uploadCurrentTranslationToDrive(){
   if(sharedDriveFolderId)return false;
   if(!driveTokenValid()||!currentTrackKey||!hasAnyTranslation())return false;const folder=await ensureDriveFolder();const existing=await findDriveTranslationFile();
-  const meta={name:driveSafeName()};if(!existing)meta.parents=[folder];
+  rememberSongForDrive();const meta={name:driveSafeName()};if(!existing)meta.parents=[folder];
   if(existing){
     const old=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(existing.id)+'?alt=media');
     const oldArr=Array.isArray(old?.lyrics)?old.lyrics.map(x=>x?.translation||''):null;
@@ -982,10 +1049,10 @@ async function exportLyricsRows(){
  if(lyrics.some(x=>hasHan(x.text))){try{py=await loadPinyin();}catch(e){console.warn('Pinyin không khả dụng:',e);}}
  return lyrics.map(x=>{let pinyin='';if(hasHan(x.text)){pinyin=localStorage.getItem(pinyinKey(x.text))||'';if(!pinyin&&py){try{pinyin=py.pinyin(x.text,{toneType:'symbol',type:'string'});}catch(_){}}}return {time:x.time,text:x.text||'',pinyin,translation:x.translation||''};});
 }
-function exportLyricsText(rows){const m=currentSongMeta();const stamp=t=>{const n=Number(t);if(!Number.isFinite(n))return '';const sec=Math.max(0,Math.floor(n/1000));return '['+String(Math.floor(sec/60)).padStart(2,'0')+':'+String(sec%60).padStart(2,'0')+'] ';};return [m.title+' — '+m.artist,'',...rows.flatMap(r=>[stamp(r.time)+r.text,r.pinyin?('Pinyin: '+r.pinyin):null,r.translation?('Dịch: '+r.translation):null,''].filter(x=>x!==null))].join('\n');}
+function exportLyricsText(rows){const m=currentSongMeta();const stamp=t=>{const n=Number(t);if(!Number.isFinite(n))return '';const cs=Math.round(Math.max(0,n)*100);return '['+String(Math.floor(cs/6000)).padStart(2,'0')+':'+String(Math.floor(cs%6000/100)).padStart(2,'0')+'.'+String(cs%100).padStart(2,'0')+']';};return ['[ti:'+(m.title||'')+']','[ar:'+(m.artist||'')+']','[by:Spotify Bilingual V14.13]','',...rows.flatMap(r=>{const ts=stamp(r.time);return [ts+(r.text||''),r.pinyin?ts+'[py]'+r.pinyin:null,r.translation?ts+'[tr]'+r.translation:null].filter(Boolean);})].join('\n');}
 function exportLyricsModalOpen(){$('exportLyricsStatus').textContent='';$('exportLyricsModal').classList.add('open');}
-async function exportLyricsDevice(){const status=$('exportLyricsStatus');try{const rows=await exportLyricsRows();const blob=new Blob(['\ufeff'+exportLyricsText(rows)],{type:'text/plain;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=exportLyricsFilename()+'.txt';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),15000);status.textContent='Đã yêu cầu trình duyệt lưu tệp TXT về máy.';}catch(e){status.textContent=e.message;}}
-async function exportLyricsDrive(){const status=$('exportLyricsStatus'),btn=$('exportLyricsDriveBtn');if(!driveTokenValid()){status.textContent='Hãy kết nối Google Drive trong Cài đặt trước.';return;}if(sharedDriveFolderId){status.textContent='Thư viện chia sẻ chỉ đọc. Chuyển về thư viện cá nhân để tải lên.';return;}btn.disabled=true;status.textContent='Đang chuẩn bị lời và bản dịch…';try{const rows=await exportLyricsRows();const folder=await ensureDriveFolder();const filename=driveSafeName().replace(/\.json$/,'__lyrics.json');const q=encodeURIComponent(`name='${filename.replace(/'/g,"\\'")}' and '${folder}' in parents and trashed=false`);const result=await driveApi('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name)&pageSize=10');const existing=result?.files?.[0];const payload={version:2,type:'lyrics-with-translation',trackKey:currentTrackKey,language:$('targetLang').value,song:currentSongMeta(),savedAt:new Date().toISOString(),lyrics:rows};await uploadMultipartDrive(existing?{name:filename}:{name:filename,parents:[folder]},payload,existing?.id||'');status.textContent='Đã lưu lời gốc, Pinyin và bản dịch lên thư mục Spotify Bilingual Lyrics trên Drive.';toast('Đã lưu lời và bản dịch lên Drive.');}catch(e){status.textContent='Không lưu được: '+e.message;}finally{btn.disabled=false;}}
+async function exportLyricsDevice(){const status=$('exportLyricsStatus');try{const rows=await exportLyricsRows();const blob=new Blob(['\ufeff'+exportLyricsText(rows)],{type:'text/plain;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=exportLyricsFilename()+'.lrc';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),15000);status.textContent='Đã yêu cầu trình duyệt lưu LRC mở rộng về máy.';}catch(e){status.textContent=e.message;}}
+async function exportLyricsDrive(){const status=$('exportLyricsStatus'),btn=$('exportLyricsDriveBtn');if(!driveTokenValid()){status.textContent='Hãy kết nối Google Drive trong Cài đặt trước.';return;}if(sharedDriveFolderId){status.textContent='Thư viện chia sẻ chỉ đọc.';return;}btn.disabled=true;try{const rows=await exportLyricsRows(),folder=await ensureDriveFolder();rememberSongForDrive();const filename=exportLyricsFilename()+'.lrc';const files=await listDriveFolderFiles(folder);const existing=files.find(f=>f.name===filename);const content=exportLyricsText(rows);if(existing){await driveApi('https://www.googleapis.com/upload/drive/v3/files/'+encodeURIComponent(existing.id)+'?uploadType=media',{method:'PATCH',headers:{'Content-Type':'text/plain; charset=utf-8'},body:content});}else{await uploadDriveBlob(new Blob([content],{type:'text/plain;charset=utf-8'}),filename,folder,'text/plain');}status.textContent='Đã lưu LRC mở rộng trên Google Drive: '+filename;toast('Đã lưu LRC trên Drive.');}catch(e){status.textContent='Không lưu được: '+e.message;}finally{btn.disabled=false;}}
 $('quickExportBtn').onclick=exportLyricsModalOpen;
 $('exportLyricsCloseBtn').onclick=()=>$('exportLyricsModal').classList.remove('open');
 $('exportLyricsDeviceBtn').onclick=exportLyricsDevice;
@@ -1285,7 +1352,7 @@ async function loadLibrary(){
 }
 $('libraryFilters').onclick=e=>{const btn=e.target.closest('[data-lib]');if(!btn)return;libState.filter=btn.dataset.lib;document.querySelectorAll('.lib-filter').forEach(b=>b.classList.toggle('selected',b===btn));renderLibrary();};
 async function viewTrackLyrics(t){
-  const x=trackData(t);currentTrackKey=x.id||x.name+'|'+x.artist;$('trackTitle').textContent=x.name;$('trackArtist').textContent=x.artist+(x.album?' • '+x.album:'');if(x.cover)$('cover').src=x.cover;$('syncStatus').textContent='[Xem lời từ thư viện]';isPlaying=false;switchTab('now');await fetchLyrics(x.name,x.artist,x.album,x.duration);
+  const x=trackData(t);currentTrackKey=x.id||x.name+'|'+x.artist;$('trackTitle').textContent=x.name;$('trackArtist').textContent=x.artist+(x.album?' • '+x.album:'');rememberSongForDrive();if(x.cover)$('cover').src=x.cover;$('syncStatus').textContent='[Xem lời từ thư viện]';isPlaying=false;switchTab('now');await fetchLyrics(x.name,x.artist,x.album,x.duration);
 }
 async function loadPlaylists(force=false){
   const grid=$('playlistGrid'); if(playlistsCache.length&&!force){renderPlaylists();return;} grid.innerHTML='<div class="empty-small">Đang tải playlist...</div>';
@@ -1429,6 +1496,20 @@ function importTranslationLines(text){
  }else{for(let i=0;i<Math.min(lyrics.length,parsed.length);i++){lyrics[i].translation=parsed[i].text;count++;}}
  return count;
 }
+// V14.13: batch index of user-selected LRC files. Browser cannot scan storage without permission.
+const lrcFolderIndex=new Map();
+function normAudioName(n){return String(n||'').normalize('NFKC').replace(/\.[^.]+$/,'').replace(/\s*[-–]\s*/g,' ').replace(/[^\p{L}\p{N}]+/gu,' ').toLocaleLowerCase().trim();}
+function lrcMatchScore(audio,lrc){const a=normAudioName(audio),b=normAudioName(lrc);if(!a||!b)return 0;if(a===b)return 100;if(a.includes(b)||b.includes(a))return 70;const x=new Set(a.split(' ').filter(t=>t.length>1)),y=new Set(b.split(' ').filter(t=>t.length>1));const shared=[...x].filter(t=>y.has(t)).length;return Math.round(60*shared/Math.max(x.size,y.size,1));}
+$('localScanLrc').onclick=()=>$('localLrcFolder').click();
+$('localLrcFolder').addEventListener('change',async e=>{
+ const files=[...e.target.files].filter(f=>/\.lrc$/i.test(f.name));lrcFolderIndex.clear();for(const f of files)lrcFolderIndex.set(f.name,f);
+ const audio=$('localAudioFile').files[0];let best=null,score=0;
+ if(audio)for(const f of files){const s=lrcMatchScore(audio.name,f.name);if(s>score){score=s;best=f;}}
+ if(best&&score>=70){setLocalFileInput('localLyricFile',best);$('localScanResults').textContent='✓ Đã ghép '+audio.name+' ↔ '+best.name+' ('+score+'%).';}
+ else $('localScanResults').textContent='Đã lập danh mục '+files.length+' LRC. '+(audio?'Chưa có kết quả đủ tin cậy; hãy chọn LRC thủ công.':'Chọn bài nhạc để tìm LRC tương ứng.');
+});
+$('localScanDriveLrc').onclick=async()=>{const audio=$('localAudioFile').files[0];if(!audio){$('localScanResults').textContent='Hãy chọn bài nhạc trước.';return;}if(!driveTokenValid()){$('localScanResults').textContent='Hãy kết nối Google Drive trong Cài đặt.';return;}try{$('localScanResults').textContent='Đang tìm LRC trên Drive...';const folder=await ensureDriveFolder(),files=(await listDriveFolderFiles(folder)).filter(f=>/\.lrc$/i.test(f.name));let best=null,score=0;for(const f of files){const n=lrcMatchScore(audio.name,f.name);if(n>score){best=f;score=n;}}if(!best||score<70){$('localScanResults').textContent='Không tìm thấy LRC khớp chắc chắn trên Drive ('+files.length+' tệp).';return;}const content=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(best.id)+'?alt=media');if(typeof content!=='string')throw Error('Tệp LRC không hợp lệ');setLocalFileInput('localLyricFile',new File([content],best.name,{type:'text/plain'}));$('localScanResults').textContent='✓ Đã ghép từ Drive: '+best.name+' ('+score+'%).';}catch(e){$('localScanResults').textContent='Lỗi tìm LRC: '+e.message;}};
+$('localAudioFile').addEventListener('change',()=>{const f=$('localAudioFile').files[0];if(!f||!lrcFolderIndex.size)return;let best=null,score=0;for(const v of lrcFolderIndex.values()){const n=lrcMatchScore(f.name,v.name);if(n>score){score=n;best=v;}}if(best&&score>=70){setLocalFileInput('localLyricFile',best);$('localScanResults').textContent='✓ Ghép '+best.name+' ('+score+'%).';}else $('localScanResults').textContent='Chưa có LRC khớp chắc chắn. Hãy chọn thủ công.';});
 $('localImportApply').onclick=async()=>{
  const f=$('localAudioFile').files[0],lf=$('localLyricFile').files[0],tf=$('localTranslationFile').files[0];
  if(!f){$('localImportStatus').textContent='Hãy chọn tệp âm thanh trước.';return;}
@@ -1447,7 +1528,7 @@ $('localImportApply').onclick=async()=>{
   if(lyricText.trim()){applyManualContent(lyricText);localStorage.setItem(manualKey(),JSON.stringify({text:lyricText,offset:0,savedAt:Date.now()}));}
   else{const cached=manualSaved();if(cached)applyManualContent(cached.text,cached.offset);else{$('lyrics').innerHTML='<div class="empty">Chưa có lời. Mở Nguồn lời để nhập LRC/TXT.</div>';}}
   if(translationText.trim()&&lyrics.length){const n=importTranslationLines(translationText);renderLyrics();saveTranslationCache();$('localImportStatus').textContent='Đã ghép '+n+' dòng bản dịch.';}
-  else if(lyrics.length)await restoreTranslationsSmart();
+  else if(lyrics.length&&!lyrics.some(x=>x.translation))await restoreTranslationsSmart();
   $('syncStatus').textContent='[Nhạc trên thiết bị'+(lyrics.some(x=>Number.isFinite(x.time))?' • lời đồng bộ':' • chưa có LRC')+']';
   hideLocalImport();switchTab('now');
   try{await localAudio.play();}catch(_){toast('Đã mở bài hát. Bấm ▶ để phát.');}
@@ -1530,6 +1611,7 @@ async function listDriveFolderFiles(folder, filter=''){
 }
 async function openDriveLyricsRecord(record){
  const data=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(record.id)+'?alt=media');
+ if(typeof data==='string'){applyManualContent(data);$('trackTitle').textContent=record.name.replace(/\.lrc$/i,'');hideLocalImport();switchTab('now');toast('Đã mở LRC mở rộng từ Drive.');return;}
  if(!Array.isArray(data?.lyrics))throw Error('Tệp không chứa lời bài hát hợp lệ.');
  lyrics=data.lyrics.map(x=>({time:x.time,text:x.text||'',pinyin:x.pinyin||'',translation:x.translation||''}));
  if(data.song?.title)$('trackTitle').textContent=data.song.title;
@@ -1541,7 +1623,7 @@ async function refreshDriveMusicList(){
  driveMusicStatus('Đang đọc thư viện lời và nhạc trên Google Drive...');
  const root=await ensureDriveFolder();
  const entries=await listDriveFolderFiles(root);
- const lyricFiles=entries.filter(f=>f.name?.endsWith('__lyrics.json'));
+ const lyricFiles=entries.filter(f=>f.name?.endsWith('__lyrics.json')||/\.lrc$/i.test(f.name));
  // Legacy music manifests are kept readable for backward compatibility.
  let musicFiles=[];
  if(!sharedDriveFolderId){
@@ -1556,8 +1638,8 @@ async function refreshDriveMusicList(){
    const btn=document.createElement('button');btn.type='button';btn.className='btn';btn.style.cssText='text-align:left;white-space:normal;line-height:1.5';
    if(item.kind==='lyrics'){
     const data=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(item.file.id)+'?alt=media');
-    if(!Array.isArray(data?.lyrics))continue;
-    btn.textContent='📄 '+(data.song?.title||item.file.name)+' · '+(data.song?.artist||'')+' · Lời / Pinyin / Dịch';
+    if(typeof data!=='string'&&!Array.isArray(data?.lyrics))continue;
+    btn.textContent='📄 '+(data?.song?.title||item.file.name)+' · '+(data?.song?.artist||'')+' · Lời / Pinyin / Dịch';
     btn.onclick=()=>openDriveLyricsRecord(item.file).catch(e=>driveMusicStatus('Lỗi: '+e.message));
    }else{
     const m=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(item.file.id)+'?alt=media');
@@ -1565,7 +1647,9 @@ async function refreshDriveMusicList(){
     btn.textContent='▶ '+(m.title||'Bài hát')+' · '+[m.files.audio?'Nhạc':null,m.files.lyrics?'Lời':null,m.files.translation?'Dịch':null].filter(Boolean).join(' / ');
     btn.onclick=()=>openDriveMusicBundle(m).catch(e=>driveMusicStatus('Lỗi: '+e.message));
    }
-   list.append(btn);
+   const wrap=document.createElement('div');wrap.style.cssText='display:flex;gap:6px;align-items:stretch';btn.style.flex='1';wrap.append(btn);
+   const link=document.createElement('button');link.type='button';link.className='btn';link.textContent='📍';link.title='Mở vị trí tệp trên Google Drive';link.setAttribute('aria-label','Xem vị trí tệp trên Google Drive');
+   link.onclick=()=>window.open('https://drive.google.com/file/d/'+encodeURIComponent(item.file.id)+'/view','_blank','noopener,noreferrer');wrap.append(link);list.append(wrap);
   }catch(e){console.warn('Không đọc được tệp Drive',item.file.name,e);}
  }
  driveMusicStatus(list.children.length?'Đã tìm thấy '+list.children.length+' mục trong thư viện Drive.':'Chưa có tệp lời/bản dịch hoặc nhạc trong thư viện Drive này.');
@@ -1573,6 +1657,7 @@ async function refreshDriveMusicList(){
 $('driveMusicUpload').onclick=async()=>{try{$('driveMusicUpload').disabled=true;await uploadMusicBundle($('localAudioFile').files[0],$('localLyricFile').files[0],$('localTranslationFile').files[0]);}catch(e){driveMusicStatus('Lỗi: '+e.message);}finally{$('driveMusicUpload').disabled=false;}};
 $('driveLyricsSave').onclick=async()=>{try{await exportLyricsDrive();driveMusicStatus($('exportLyricsStatus').textContent);if($('exportLyricsStatus').textContent.startsWith('Đã lưu'))await refreshDriveMusicList();}catch(e){driveMusicStatus('Lỗi: '+e.message);}};
 $('driveMusicRefresh').onclick=()=>refreshDriveMusicList().catch(e=>driveMusicStatus('Lỗi: '+e.message));
+$('driveRenameFiles').onclick=async()=>{if(!confirm('Đổi tên các tệp JSON cũ theo tên bài hát và ca sĩ? Tệp không xác định được tên sẽ giữ nguyên.'))return;const b=$('driveRenameFiles');b.disabled=true;try{await renameExistingDriveLyrics();}catch(e){driveMusicStatus('Lỗi đổi tên: '+e.message);}finally{b.disabled=false;}};
 
 async function init(){
   updateSharedDriveUI();const lang=localStorage.getItem(LS.lang)||'vi';$('targetLang').value=lang;$('quickLang').value=lang;$('defaultLang').value=lang;$('redirectHint').textContent=redirectUri();updateApiState();updateDriveStatus();setTimeout(()=>{initGoogleTokenClient();updateDriveStatus();},600);
