@@ -1,0 +1,1 @@
+V14.8 - Incremental Google Drive Sync\n- Bỏ qua bản đã xác minh nếu nội dung cục bộ và modifiedTime trên Drive không đổi.\n- Chỉ tải lên bản chưa tồn tại; chỉ tải xuống bản chỉ có trên Drive.\n- Đọc lại và xác minh khi bản đã biết thay đổi.\n- Không ghi đè khi hai bản khác nhau; báo xung đột.\n- Lần đầu cần đối chiếu các bản chưa xác minh; các lần sau nhanh hơn.\n

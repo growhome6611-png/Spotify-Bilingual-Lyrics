@@ -417,7 +417,19 @@ body > header{display:none!important}
         <div id="driveVerifyDetail" style="color:#aaa">Nhấn Kiểm tra đồng bộ để đối chiếu dữ liệu thực tế.</div>
         <div id="driveBatchProgress" style="margin-top:9px;color:#aaa" aria-live="polite">Chưa chạy đồng bộ hàng loạt.</div>
         <progress id="driveBatchBar" max="100" value="0" style="width:100%;height:8px;accent-color:#1ed760;display:none"></progress>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px"><button class="btn primary" id="driveBatchBtn">☁️ Đồng bộ tất cả</button><button class="btn" id="driveRestoreBtn">⬇️ Tải bản còn thiếu</button><button class="btn" id="verifyDriveBtn">🔎 Kiểm tra đồng bộ</button></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px"><button class="btn primary" id="driveBatchBtn">☁️ Đồng bộ thay đổi</button><button class="btn" id="driveRestoreBtn">⬇️ Tải bản còn thiếu</button><button class="btn" id="verifyDriveBtn">🔎 Kiểm tra đồng bộ</button></div>
+      </div>
+      <div style="margin:12px 0;padding:12px;border:1px solid #343434;border-radius:12px;background:#171717">
+        <strong>🔗 Thư viện lời và bản dịch dùng chung (V14.9)</strong>
+        <p class="hint">Cùng một thư mục cho bản dịch tải lên và đồng bộ. Chủ thư viện có thể chia sẻ link cho các thiết bị khác. Người nhận mở ở chế độ chỉ đọc.</p>
+        <div class="field"><label>Link thư mục Google Drive được chia sẻ</label><input id="sharedDriveLink" type="url" placeholder="https://drive.google.com/drive/folders/..." autocomplete="off"></div>
+        <div style="display:flex;gap:7px;flex-wrap:wrap;margin:9px 0">
+          <button class="btn" id="driveUseSharedBtn">🔗 Kết nối thư viện chia sẻ</button>
+          <button class="btn" id="driveUsePersonalBtn">📁 Trở về thư viện của tôi</button>
+          <button class="btn" id="driveCopyFolderBtn">📋 Sao chép link thư viện</button>
+        </div>
+        <div class="hint" id="sharedDriveStatus">Thư viện cá nhân: có quyền tải lên và đồng bộ.</div>
+        <div class="hint">Lưu ý: Google Drive yêu cầu chủ thư mục cấp quyền xem cho tài khoản nhận link. Nếu chưa được cấp quyền, không thể đọc dữ liệu. Nhạc Spotify không được sao chép sang Drive.</div>
       </div>
       <div class="drive-actions">
         <button class="btn primary" id="connectDriveBtn">Kết nối Drive</button>
@@ -473,6 +485,25 @@ let googleDriveToken = localStorage.getItem(LS.gtoken) || '';
 let googleDriveExpiresAt = Number(localStorage.getItem(LS.gexp) || 0);
 let googleDriveFolderId = localStorage.getItem(LS.gfolder) || '';
 let googleTokenClient = null;
+const SHARED_DRIVE_KEY='spotify_shared_drive_folder_v149';
+let sharedDriveFolderId=localStorage.getItem(SHARED_DRIVE_KEY)||'';
+function parseSharedDriveFolderLink(value){
+  const raw=String(value||'').trim();
+  try{const url=new URL(raw);if(url.protocol!=='https:'||!['drive.google.com','www.drive.google.com'].includes(url.hostname))return '';
+    const m=url.pathname.match(/^\/drive\/folders\/([A-Za-z0-9_-]+)\/?$/);
+    return m?m[1]:'';
+  }catch(_){return '';}
+}
+function activeTranslationFolderId(){return sharedDriveFolderId||googleDriveFolderId;}
+function updateSharedDriveUI(msg){
+  const input=$('sharedDriveLink'),status=$('sharedDriveStatus');if(!input||!status)return;
+  input.value=sharedDriveFolderId?'https://drive.google.com/drive/folders/'+sharedDriveFolderId:'';
+  status.textContent=msg||(sharedDriveFolderId?'🔒 Đang dùng thư viện chia sẻ (chỉ đọc): '+sharedDriveFolderId:'📁 Thư viện cá nhân: đồng bộ hai chiều, tải lên cùng thư mục.');
+  $('driveBatchBtn').disabled=!!sharedDriveFolderId;
+  $('syncDriveBtn').disabled=!!sharedDriveFolderId;
+  $('driveUseSharedBtn').disabled=!driveTokenValid();
+}
+
 let accessToken = localStorage.getItem(LS.access) || '';
 let refreshToken = localStorage.getItem(LS.refresh) || '';
 let expiresAt = Number(localStorage.getItem(LS.expires) || 0);
@@ -738,7 +769,7 @@ async function translateAll(){
 function showTranslation(i){const el=$('tr-'+i);if(el){el.textContent=lyrics[i].translation;el.style.display=lyrics[i].translation?'block':'none';}updateFullTranslation(i);}
 function clearTranslations(){lyrics.forEach((x,i)=>{x.translation='';showTranslation(i);});}
 function cacheKey(){return 'lyric_trans_'+currentTrackKey+'_'+$('targetLang').value;}
-function saveTranslationCache(){if(!currentTrackKey)return;try{localStorage.setItem(cacheKey(),JSON.stringify(lyrics.map(x=>x.translation||'')));}catch(e){} renderDriveSyncDashboard();if(hasAnyTranslation()&&driveTokenValid())uploadCurrentTranslationToDrive().catch(e=>{driveSyncError=e.message;renderDriveSyncDashboard();}); }
+function saveTranslationCache(){if(!currentTrackKey)return;try{localStorage.setItem(cacheKey(),JSON.stringify(lyrics.map(x=>x.translation||'')));}catch(e){} renderDriveSyncDashboard();if(hasAnyTranslation()&&driveTokenValid()&&!sharedDriveFolderId)uploadCurrentTranslationToDrive().catch(e=>{driveSyncError=e.message;renderDriveSyncDashboard();}); }
 function restoreCachedTranslations(){let restored=false;try{const arr=JSON.parse(localStorage.getItem(cacheKey())||'null');if(Array.isArray(arr)){arr.forEach((v,i)=>{if(lyrics[i]){lyrics[i].translation=v||'';showTranslation(i);if(v)restored=true;}});}}catch(e){} return restored; }
 
 function hasAnyTranslation(){return lyrics.some(x=>String(x.translation||'').trim());}
@@ -753,7 +784,7 @@ function renderDriveSyncDashboard(){
  const local=$('driveLocalCount'),remote=$('driveRemoteCount'),pending=$('drivePendingCount'),last=$('driveLastSync'),badge=$('driveSyncBadge'),detail=$('driveVerifyDetail');if(!local)return;
  local.textContent=String(keys.length);remote.textContent=connected&&driveRemoteKnown!==null?String(driveRemoteKnown):'—';
  const pendingKeys=keys.filter(k=>!meta.verified?.[k]||meta.verified[k]!==localStorage.getItem(k));
- pending.textContent='Bản dịch trên máy chưa xác minh trên Drive: '+pendingKeys.length;
+ pending.textContent='Bản chưa xác minh hoặc đã thay đổi trên máy: '+pendingKeys.length;
  last.textContent='Đồng bộ gần nhất: '+(meta.lastVerified?new Date(meta.lastVerified).toLocaleString('vi-VN'):'Chưa xác minh');
  if(driveSyncBusy){badge.textContent='◌ Đang kiểm tra…';badge.style.color='#e7c96e';}
  else if(driveSyncError){badge.textContent='● Có lỗi';badge.style.color='#ff7777';}
@@ -784,40 +815,53 @@ function batchProgress(done,total,uploaded,restored,skipped,failed){
  bar.style.display='block';bar.value=total?Math.round(done/total*100):100;
 }
 async function runDriveBatch(mode='both'){
+  if(sharedDriveFolderId&&mode!=='download')mode='download';
  if(driveBatchRunning||driveSyncBusy)return;
  if(!driveTokenValid()){toast('Hãy kết nối Google Drive trước.');return;}
  driveBatchRunning=true;driveSyncError='';const upBtn=$('driveBatchBtn'),downBtn=$('driveRestoreBtn');upBtn.disabled=true;downBtn.disabled=true;
- let uploaded=0,restored=0,skipped=0,failed=0,done=0;const failures=[];
+ let uploaded=0,restored=0,skipped=0,failed=0,done=0,conflicts=0;const failures=[];
  try{
   const files=await driveListTranslationFiles(),byName=new Map();
   files.forEach(f=>{if(!byName.has(f.name))byName.set(f.name,f);});
   const keys=localTranslationKeys(),localByName=new Map();
   for(const key of keys){const name=driveFileNameForKey(key);if(name&&!localByName.has(name))localByName.set(name,key);}
+  const meta=driveSyncMeta(),verified={...(meta.verified||{})},remoteStamps={...(meta.remoteStamps||{})};
   const jobs=[];
-  if(mode!=='download')for(const [name,key] of localByName)jobs.push({kind:'upload',name,key});
+  if(mode!=='download')for(const [name,key] of localByName){
+   const existing=byName.get(name),raw=localStorage.getItem(key);
+   const stamp=existing?existing.id+'|'+(existing.modifiedTime||''):null;
+   // Both local content and remote file revision must match a previously verified pair.
+   if(existing&&verified[key]===raw&&remoteStamps[key]===stamp){skipped++;continue;}
+   jobs.push({kind:'upload',name,key,existing,stamp});
+  }
   if(mode!=='upload')for(const f of files)if(!localByName.has(f.name))jobs.push({kind:'download',file:f});
-  batchProgress(0,jobs.length,0,0,0,0);
-  const verified={...(driveSyncMeta().verified||{})};
+  batchProgress(0,jobs.length,0,0,skipped,0);
+  if(!jobs.length){setDriveSyncMeta({verified,remoteStamps,lastVerified:new Date().toISOString(),detail:'Không có bản mới hoặc thay đổi. Đã bỏ qua '+skipped+' bản trùng khớp.'});toast('Dữ liệu đã đồng bộ, không cần tải lại.');return;}
   for(const job of jobs){
    try{
     if(job.kind==='upload'){
      const raw=localStorage.getItem(job.key),arr=JSON.parse(raw||'null');
      if(!Array.isArray(arr)||!arr.some(v=>String(v||'').trim())){skipped++;continue;}
-     const existing=byName.get(job.name);
+     const existing=job.existing;
      if(existing){
       const remote=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(existing.id)+'?alt=media');
       const remoteArr=Array.isArray(remote?.lyrics)?remote.lyrics.map(x=>x?.translation||''):null;
-      if(remoteArr&&JSON.stringify(remoteArr)===JSON.stringify(arr)){verified[job.key]=raw;skipped++;}
-      else {skipped++;failures.push(job.name+': bản trên Drive khác bản trên máy, đã giữ nguyên cả hai.');}
+      if(remoteArr&&JSON.stringify(remoteArr)===JSON.stringify(arr)){
+       verified[job.key]=raw;remoteStamps[job.key]=job.stamp;skipped++;
+      }else{
+       conflicts++;skipped++;
+       // Never overwrite either side when revisions diverge; preserve for manual resolution.
+       failures.push(job.name+': nội dung trên Drive khác trên máy, chưa ghi đè.');
+      }
      }else{
       const rest=job.key.slice('lyric_trans_'.length),idx=rest.lastIndexOf('_');
       const trackKey=rest.slice(0,idx),language=rest.slice(idx+1);
       const payload={version:2,trackKey,language,savedAt:new Date().toISOString(),lyrics:arr.map(translation=>({translation:translation||''}))};
       const result=await uploadMultipartDrive({name:job.name,parents:[await ensureDriveFolder()]},payload);
-      // Verify actual uploaded bytes before marking this key synced.
       const remote=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(result.id)+'?alt=media');
       if(JSON.stringify(remote?.lyrics?.map(x=>x?.translation||''))!==JSON.stringify(arr))throw new Error('Dữ liệu đọc lại không khớp');
-      byName.set(job.name,{id:result.id,name:job.name});verified[job.key]=raw;uploaded++;
+      const info=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(result.id)+'?fields=id,name,modifiedTime');
+      byName.set(job.name,info);verified[job.key]=raw;remoteStamps[job.key]=info.id+'|'+(info.modifiedTime||'');uploaded++;
      }
     }else{
      const f=job.file,remote=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(f.id)+'?alt=media');
@@ -825,15 +869,15 @@ async function runDriveBatch(mode='both'){
      if(!Array.isArray(arr)||!arr.some(x=>String(x).trim())||!remote?.trackKey||!remote?.language){skipped++;continue;}
      const key='lyric_trans_'+remote.trackKey+'_'+remote.language;
      if(localStorage.getItem(key)!==null){skipped++;continue;}
-     localStorage.setItem(key,JSON.stringify(arr));verified[key]=JSON.stringify(arr);restored++;
+     const raw=JSON.stringify(arr);localStorage.setItem(key,raw);verified[key]=raw;remoteStamps[key]=f.id+'|'+(f.modifiedTime||'');restored++;
     }
    }catch(e){failed++;failures.push((job.name||job.file?.name||'Tệp')+': '+(e.message||e));}
-   finally{done++;batchProgress(done,jobs.length,uploaded,restored,skipped,failed);setDriveSyncMeta({verified});}
+   finally{done++;batchProgress(done,jobs.length,uploaded,restored,skipped,failed);setDriveSyncMeta({verified,remoteStamps});}
   }
   await driveCountFiles();
-  const detail=`Hoàn tất: tải lên ${uploaded}, tải về ${restored}, bỏ qua ${skipped}, lỗi ${failed}.`+(failures.length?' '+failures.slice(0,3).join(' | '):'');
-  setDriveSyncMeta({verified,lastVerified:new Date().toISOString(),detail});
-  if(failed)driveSyncError=`Có ${failed} tệp lỗi. ${failures.slice(0,2).join(' | ')}`;
+  const detail=`Hoàn tất: tải lên ${uploaded}, tải về ${restored}, bỏ qua ${skipped}, xung đột ${conflicts}, lỗi ${failed}.`+(failures.length?' '+failures.slice(0,3).join(' | '):'');
+  setDriveSyncMeta({verified,remoteStamps,lastVerified:new Date().toISOString(),detail});
+  if(failed||conflicts)driveSyncError=`Có ${conflicts} bản khác nội dung và ${failed} lỗi. Không ghi đè dữ liệu.`;
   updateDriveStatus(detail);toast(detail);
  }catch(e){driveSyncError=e.message||String(e);toast('Đồng bộ hàng loạt thất bại: '+driveSyncError);}
  finally{driveBatchRunning=false;upBtn.disabled=false;downBtn.disabled=false;renderDriveSyncDashboard();}
@@ -865,10 +909,10 @@ function updateDriveStatus(msg=''){
 }
 function initGoogleTokenClient(){
   if(!googleClientId||!window.google?.accounts?.oauth2)return false;
-  googleTokenClient=google.accounts.oauth2.initTokenClient({client_id:googleClientId,scope:'https://www.googleapis.com/auth/drive.file',include_granted_scopes:false,callback:(resp)=>{
+  googleTokenClient=google.accounts.oauth2.initTokenClient({client_id:googleClientId,scope:'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly',include_granted_scopes:false,callback:(resp)=>{
     if(resp.error){updateDriveStatus('Google Drive: '+resp.error);return;}
     googleDriveToken=resp.access_token||'';googleDriveExpiresAt=Date.now()+((resp.expires_in||3600)-60)*1000;
-    localStorage.setItem(LS.gtoken,googleDriveToken);localStorage.setItem(LS.gexp,String(googleDriveExpiresAt));updateDriveStatus();toast('Đã kết nối Google Drive.');
+    localStorage.setItem(LS.gtoken,googleDriveToken);localStorage.setItem(LS.gexp,String(googleDriveExpiresAt));updateDriveStatus();updateSharedDriveUI();toast('Đã kết nối Google Drive.');
   }});return true;
 }
 function connectGoogleDrive(){
@@ -876,7 +920,7 @@ function connectGoogleDrive(){
   if(!initGoogleTokenClient()){toast('Google Identity Services chưa tải xong, hãy thử lại sau vài giây.');return;}
   googleTokenClient.requestAccessToken({prompt:'consent'});
 }
-function disconnectGoogleDrive(){driveRemoteKnown=null;googleDriveToken='';googleDriveExpiresAt=0;localStorage.removeItem(LS.gtoken);localStorage.removeItem(LS.gexp);updateDriveStatus();toast('Đã ngắt Google Drive.');}
+function disconnectGoogleDrive(){driveRemoteKnown=null;googleDriveToken='';googleDriveExpiresAt=0;localStorage.removeItem(LS.gtoken);localStorage.removeItem(LS.gexp);updateDriveStatus();updateSharedDriveUI();toast('Đã ngắt Google Drive.');}
 async function driveApi(url,opt={}){
   if(!driveTokenValid())throw new Error('Google Drive chưa kết nối hoặc phiên đã hết hạn.');
   const headers={Authorization:'Bearer '+googleDriveToken,...(opt.headers||{})};
@@ -885,6 +929,7 @@ async function driveApi(url,opt={}){
 }
 function driveSafeName(){return (currentTrackKey||'track').replace(/[^a-zA-Z0-9._-]+/g,'_').slice(0,110)+'__'+$('targetLang').value+'.json';}
 async function ensureDriveFolder(){
+  if(sharedDriveFolderId)return sharedDriveFolderId;
   if(googleDriveFolderId)return googleDriveFolderId;
   const q=encodeURIComponent("name='Spotify Bilingual Lyrics' and mimeType='application/vnd.google-apps.folder' and trashed=false");
   const d=await driveApi('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name)&pageSize=10');
@@ -899,11 +944,13 @@ async function findDriveTranslationFile(){
 }
 function currentTranslationPayload(){return {version:1,trackKey:currentTrackKey,language:$('targetLang').value,savedAt:new Date().toISOString(),song:currentSongMeta(),lyrics:lyrics.map(x=>({time:x.time,text:x.text,translation:x.translation||''}))};}
 async function uploadMultipartDrive(meta,payload,fileId=''){
+  if(sharedDriveFolderId)throw Error('Thư viện chia sẻ đang ở chế độ chỉ đọc. Chọn Thư viện của tôi để tải lên.');
   const boundary='-------314159265358979323846';const body='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+boundary+'\r\nContent-Type: application/json\r\n\r\n'+JSON.stringify(payload)+'\r\n--'+boundary+'--';
   const url=fileId?'https://www.googleapis.com/upload/drive/v3/files/'+encodeURIComponent(fileId)+'?uploadType=multipart&fields=id,name':'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name';
   return driveApi(url,{method:fileId?'PATCH':'POST',headers:{'Content-Type':'multipart/related; boundary='+boundary},body});
 }
 async function uploadCurrentTranslationToDrive(){
+  if(sharedDriveFolderId)return false;
   if(!driveTokenValid()||!currentTrackKey||!hasAnyTranslation())return false;const folder=await ensureDriveFolder();const existing=await findDriveTranslationFile();
   const meta={name:driveSafeName()};if(!existing)meta.parents=[folder];
   if(existing){
@@ -1241,7 +1288,7 @@ function renderPicker(){const box=$('playlistPickerList');box.innerHTML=playlist
 async function addTrackToPlaylist(id,t){const uri=t.uri||('spotify:track:'+t.id);await spotifyApi('/playlists/'+encodeURIComponent(id)+'/items',{method:'POST',body:{uris:[uri]}});toast('Đã thêm vào bộ sưu tập.');}
 function closePicker(){$('playlistPickerModal').classList.remove('open');pickerTrack=null;}
 
-function openSettings(){ $('spotifyClientId').value=spotifyClientId;$('googleApiKey').value=googleApiKey;$('googleClientId').value=googleClientId;$('defaultLang').value=localStorage.getItem(LS.lang)||$('targetLang').value;$('redirectHint').textContent=redirectUri();$('settingsModal').classList.add('open'); renderDriveSyncDashboard(); updateDriveStatus(); }
+function openSettings(){ updateSharedDriveUI(); $('spotifyClientId').value=spotifyClientId;$('googleApiKey').value=googleApiKey;$('googleClientId').value=googleClientId;$('defaultLang').value=localStorage.getItem(LS.lang)||$('targetLang').value;$('redirectHint').textContent=redirectUri();$('settingsModal').classList.add('open'); renderDriveSyncDashboard(); updateDriveStatus(); }
 function closeSettings(){ $('settingsModal').classList.remove('open'); }
 function openUtilityDrawer(){ $('utilityDrawer').classList.add('open'); $('utilityDrawer').setAttribute('aria-hidden','false'); $('utilityOverlay').classList.add('open'); }
 function closeUtilityDrawer(){ $('utilityDrawer').classList.remove('open'); $('utilityDrawer').setAttribute('aria-hidden','true'); $('utilityOverlay').classList.remove('open'); }
@@ -1252,6 +1299,21 @@ $('lyrics').addEventListener('click',handleLyricsClick);
 $('menuBtn').onclick=()=>{ if($('utilityDrawer').classList.contains('open')) closeUtilityDrawer(); else openUtilityDrawer(); };$('drawerSettingsBtn').onclick=()=>{ closeUtilityDrawer(); openSettings(); };$('closeUtilityDrawerBtn').onclick=closeUtilityDrawer;$('utilityOverlay').onclick=closeUtilityDrawer;$('closeSettingsBtn').onclick=closeSettings;$('saveSettingsBtn').onclick=saveSettings;$('connectDriveBtn').onclick=connectGoogleDrive;$('syncDriveBtn').onclick=()=>syncDriveNow().catch(e=>{driveSyncError=e.message;renderDriveSyncDashboard();toast(e.message);});$('verifyDriveBtn').onclick=verifyDriveSync;$('driveBatchBtn').onclick=()=>runDriveBatch('both');$('driveRestoreBtn').onclick=()=>runDriveBatch('download');$('disconnectDriveBtn').onclick=disconnectGoogleDrive;
 $('loginBtn').onclick=()=>{if(accessToken||refreshToken){if(confirm('Bạn muốn ngắt kết nối Spotify?'))logoutSpotify();}else spotifyLogin();};
 $('translateAllBtn').onclick=translateAll;$('clearTransBtn').onclick=clearTranslations;$('refreshBtn').onclick=()=>fetchCurrentlyPlaying(true);$('closePopup').onclick=()=>$('dictPopup').classList.remove('open');
+$('driveUseSharedBtn').onclick=async()=>{
+  const id=parseSharedDriveFolderLink($('sharedDriveLink').value);
+  if(!id){updateSharedDriveUI('Link không hợp lệ. Hãy dán link thư mục dạng drive.google.com/drive/folders/ID.');return;}
+  if(!driveTokenValid()){toast('Hãy kết nối tài khoản Google trước.');return;}
+  try{
+    const info=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(id)+'?fields=id,name,mimeType,capabilities(canReadRevisions)');
+    if(info.mimeType!=='application/vnd.google-apps.folder')throw Error('Link không trỏ đến thư mục.');
+    sharedDriveFolderId=id;localStorage.setItem(SHARED_DRIVE_KEY,id);
+    driveRemoteKnown=null;localStorage.removeItem(DRIVE_SYNC_META);
+    updateSharedDriveUI('✓ Đã kết nối thư viện chia sẻ: '+(info.name||id)+' (chỉ đọc). Nhấn Tải bản còn thiếu để nhận dữ liệu.');
+    renderDriveSyncDashboard();toast('Đã kết nối thư viện dùng chung.');
+  }catch(e){updateSharedDriveUI('Không thể mở thư mục: '+e.message+'. Kiểm tra quyền chia sẻ và kết nối Google Drive lại.');}
+};
+$('driveUsePersonalBtn').onclick=()=>{sharedDriveFolderId='';localStorage.removeItem(SHARED_DRIVE_KEY);driveRemoteKnown=null;localStorage.removeItem(DRIVE_SYNC_META);updateSharedDriveUI();renderDriveSyncDashboard();toast('Đã trở về thư viện cá nhân.');};
+$('driveCopyFolderBtn').onclick=async()=>{try{const id=await ensureDriveFolder();const url='https://drive.google.com/drive/folders/'+id;await navigator.clipboard.writeText(url);toast('Đã sao chép link. Hãy cấp quyền xem trong Google Drive trước khi chia sẻ.');}catch(e){$('sharedDriveLink').value='https://drive.google.com/drive/folders/'+(activeTranslationFolderId()||'');toast('Không sao chép tự động được; hãy sao chép link trong ô.');}};
 $('targetLang').onchange=async()=>{localStorage.setItem(LS.lang,$('targetLang').value);clearTranslations();await restoreTranslationsSmart();};
 $('settingsModal').addEventListener('click',e=>{if(e.target===$('settingsModal'))closeSettings();});
 document.addEventListener('click',e=>{if($('dictPopup').classList.contains('open')&&!e.target.closest('.popup')&&!e.target.closest('.word'))$('dictPopup').classList.remove('open');});
@@ -1272,7 +1334,7 @@ function updateQuickToolbar(){
  if(q&&original&&q.value!==original.value)q.value=original.value;
  const drive=$('quickDriveBtn'),sync=$('quickSyncBtn');
  if(drive){const connected=driveTokenValid();drive.dataset.connected=connected?'true':'false';drive.title=connected?'Google Drive đã kết nối • Nhấn để kiểm tra':'Kết nối Google Drive';drive.setAttribute('aria-label',drive.title);}
- if(sync){const busy=!!driveBatchRunning||!!driveSyncBusy;sync.dataset.state=busy?'busy':driveSyncError?'error':driveTokenValid()?'done':'idle';sync.title=busy?'Đang đồng bộ...':driveSyncError?'Đồng bộ có lỗi • Nhấn thử lại':'Đồng bộ tất cả bản dịch';sync.disabled=busy;}
+ if(sync){const busy=!!driveBatchRunning||!!driveSyncBusy;sync.dataset.state=busy?'busy':driveSyncError?'error':driveTokenValid()?'done':'idle';sync.title=busy?'Đang đồng bộ...':driveSyncError?'Đồng bộ có lỗi • Nhấn thử lại':'Chỉ đồng bộ bản dịch mới hoặc đã thay đổi';sync.disabled=busy;}
 }
 $('quickLang').innerHTML=$('targetLang').innerHTML;
 $('quickLang').value=$('targetLang').value;
@@ -1280,7 +1342,7 @@ $('quickLang').onchange=()=>{$('targetLang').value=$('quickLang').value;$('targe
 $('quickTranslateBtn').onclick=()=>{if(!lyrics.length){toast('Hãy mở một bài hát có lời trước khi dịch.');return;}translateAll();};
 $('quickSettingsBtn').onclick=()=>{closeUtilityDrawer();openSettings();};
 $('settingsSpotifyBtn').onclick=()=>{$('loginBtn').click();};
-$('quickSyncBtn').onclick=()=>{if(!driveTokenValid()){toast('Hãy kết nối Google Drive trước.');connectGoogleDrive();return;}runDriveBatch('both').catch(e=>toast(e.message));};
+$('quickSyncBtn').onclick=()=>{if(!driveTokenValid()){toast('Hãy kết nối Google Drive trước.');connectGoogleDrive();return;}runDriveBatch(sharedDriveFolderId?'download':'both').catch(e=>toast(e.message));};
 $('quickDriveBtn').onclick=()=>{if(driveTokenValid()){verifyDriveSync().catch(e=>toast(e.message));toast('Đang kiểm tra dữ liệu Google Drive...');}else connectGoogleDrive();};
 const quickSyncObserver=new MutationObserver(updateQuickToolbar);
 quickSyncObserver.observe($('driveSyncBadge'),{childList:true,characterData:true,subtree:true});
@@ -1378,6 +1440,7 @@ const DRIVE_MUSIC_PREFIX='music_library_v147_';
 function driveMusicStatus(msg){$('driveMusicStatus').textContent=msg;}
 function safeMusicName(s){return String(s||'Bai hat').replace(/[\\/:*?"<>|]/g,'_').slice(0,90);}
 async function driveMusicFolder(){
+  if(sharedDriveFolderId)throw Error('Thư viện nhạc riêng không nằm trong thư viện lời chia sẻ. Hãy trở về thư viện cá nhân.');
  const root=await ensureDriveFolder();
  const q=encodeURIComponent(`name='Thu vien nhac' and '${root}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`);
  const d=await driveApi('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=nextPageToken,files(id,name)&pageSize=20');
@@ -1393,6 +1456,7 @@ async function uploadDriveBlob(blob,name,folder,mime){
  return driveApi('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name',{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+boundary},body});
 }
 async function uploadMusicBundle(audio,lyric,translation){
+  if(sharedDriveFolderId)throw Error('Chế độ thư viện chia sẻ chỉ đọc. Chuyển về thư viện cá nhân để tải nhạc lên.');
  if(!driveTokenValid())throw Error('Hãy kết nối Google Drive trong Cài đặt trước.');
  if(!audio&&!lyric&&!translation)throw Error('Chưa chọn tệp nào.');
  if(audio&&audio.size>200*1024*1024)throw Error('Tệp âm thanh lớn hơn 200 MB; hãy dùng tệp nhỏ hơn.');
@@ -1465,7 +1529,7 @@ $('driveLyricsSave').onclick=async()=>{try{
 $('driveMusicRefresh').onclick=()=>refreshDriveMusicList().catch(e=>driveMusicStatus('Lỗi: '+e.message));
 
 async function init(){
-  const lang=localStorage.getItem(LS.lang)||'vi';$('targetLang').value=lang;$('quickLang').value=lang;$('defaultLang').value=lang;$('redirectHint').textContent=redirectUri();updateApiState();updateDriveStatus();setTimeout(()=>{initGoogleTokenClient();updateDriveStatus();},600);
+  updateSharedDriveUI();const lang=localStorage.getItem(LS.lang)||'vi';$('targetLang').value=lang;$('quickLang').value=lang;$('defaultLang').value=lang;$('redirectHint').textContent=redirectUri();updateApiState();updateDriveStatus();setTimeout(()=>{initGoogleTokenClient();updateDriveStatus();},600);
   const q=new URLSearchParams(location.search),code=q.get('code'),state=q.get('state'),error=q.get('error');
   if(error){toast('Spotify: '+error);history.replaceState({},'',location.pathname);}
   if(code){try{const expected=localStorage.getItem(LS.state);if(expected&&state!==expected)throw new Error('OAuth state không khớp');await exchangeCode(code);history.replaceState({},'',location.pathname);toast('Đã kết nối Spotify.');}catch(e){console.error(e);toast(e.message);}}
@@ -1525,7 +1589,7 @@ function renderVocab(){const all=getVocab().filter(x=>!x.deletedAt);$('vocabCoun
 function vocabConfigurePeriod(){const p=$('vocabPeriod').value,fields=$('vocabDateFields'),a=$('vocabFrom'),b=$('vocabTo');fields.classList.toggle('open',['custom','customweek','customyear'].includes(p));a.type=p==='customweek'?'week':p==='customyear'?'number':'date';a.placeholder=p==='customyear'?'Nhập năm, ví dụ 2026':'Từ ngày';if(p==='customyear'){a.min='1900';a.max='2100';a.value=String(new Date().getFullYear())}else a.value='';b.style.display=p==='custom'?'':'none';b.value='';renderVocab()}
 async function findVocabDriveFile(){const folder=await ensureDriveFolder();const q=encodeURIComponent(`name='${VOCAB_FILE}' and '${folder}' in parents and trashed=false`);const d=await driveApi('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name,modifiedTime)&pageSize=10');return d?.files?.[0]||null}
 function vocabMerge(local,remote){const map=new Map();for(const item of [...remote,...local]){if(!item||!item.id)continue;const prev=map.get(item.id);const t=Date.parse(item.updatedAt||item.deletedAt||item.savedAt)||0,pt=Date.parse(prev?.updatedAt||prev?.deletedAt||prev?.savedAt)||0;if(!prev||t>pt||(t===pt&&item.deletedAt&&!prev.deletedAt))map.set(item.id,item)}return [...map.values()].sort((a,b)=>(Date.parse(b.savedAt)||0)-(Date.parse(a.savedAt)||0))}
-async function syncVocabDrive(){if(vocabSyncBusy)return;if(!driveTokenValid()){vocabStatus('Chưa kết nối Drive. Mở Cài đặt → Kết nối Google Drive.');toast('Hãy kết nối Google Drive trong Cài đặt.');return}vocabSyncBusy=true;vocabStatus('Đang đối chiếu từ vựng trên Drive...');$('vocabSyncBtn').disabled=true;$('vocabRestoreBtn').disabled=true;try{const file=await findVocabDriveFile();let remote=[];if(file){const payload=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(file.id)+'?alt=media');if(!Array.isArray(payload?.words))throw new Error('Tệp Drive không có danh sách từ hợp lệ.');remote=payload.words}const merged=vocabMerge(getVocab(),remote);if(!putVocab(merged,false))throw new Error('Không ghi được dữ liệu về thiết bị.');const folder=await ensureDriveFolder();const meta={name:VOCAB_FILE,mimeType:'application/json',...(file?{}:{parents:[folder]})};await uploadMultipartDrive(meta,{version:2,updatedAt:new Date().toISOString(),words:merged},file?.id||'');vocabStatus('✓ Đã đồng bộ '+merged.filter(x=>!x.deletedAt).length+' từ · '+new Date().toLocaleString('vi-VN'));toast('Đồng bộ từ vựng Google Drive thành công.')}catch(e){vocabStatus('Đồng bộ thất bại: '+e.message);throw e}finally{vocabSyncBusy=false;$('vocabSyncBtn').disabled=false;$('vocabRestoreBtn').disabled=false;renderVocab()}}
+async function syncVocabDrive(){if(sharedDriveFolderId){vocabStatus('Từ vựng cá nhân không đồng bộ vào thư viện lời chia sẻ.');return;}if(vocabSyncBusy)return;if(!driveTokenValid()){vocabStatus('Chưa kết nối Drive. Mở Cài đặt → Kết nối Google Drive.');toast('Hãy kết nối Google Drive trong Cài đặt.');return}vocabSyncBusy=true;vocabStatus('Đang đối chiếu từ vựng trên Drive...');$('vocabSyncBtn').disabled=true;$('vocabRestoreBtn').disabled=true;try{const file=await findVocabDriveFile();let remote=[];if(file){const payload=await driveApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(file.id)+'?alt=media');if(!Array.isArray(payload?.words))throw new Error('Tệp Drive không có danh sách từ hợp lệ.');remote=payload.words}const merged=vocabMerge(getVocab(),remote);if(!putVocab(merged,false))throw new Error('Không ghi được dữ liệu về thiết bị.');const folder=await ensureDriveFolder();const meta={name:VOCAB_FILE,mimeType:'application/json',...(file?{}:{parents:[folder]})};await uploadMultipartDrive(meta,{version:2,updatedAt:new Date().toISOString(),words:merged},file?.id||'');vocabStatus('✓ Đã đồng bộ '+merged.filter(x=>!x.deletedAt).length+' từ · '+new Date().toLocaleString('vi-VN'));toast('Đồng bộ từ vựng Google Drive thành công.')}catch(e){vocabStatus('Đồng bộ thất bại: '+e.message);throw e}finally{vocabSyncBusy=false;$('vocabSyncBtn').disabled=false;$('vocabRestoreBtn').disabled=false;renderVocab()}}
 $('saveDictWordBtn').addEventListener('click',saveLookedUpWord);
 async function backfillVocabGrammar(){
  const btn=$('vocabBackfillBtn');btn.disabled=true;
